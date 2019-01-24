@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdio>
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
 
