@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include <cstdint>
 #include <climits>
+#include <iomanip>
+
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
 #include "check-return.h"
@@ -15,16 +17,20 @@ void AllocatePrngState(curandState** pPrngState, uint32_t agent_count);
 void AllocateForceOfInfection(float** pForce_of_Infection, uint32_t time_steps);
 void AllocateStateMemory(STATE& state, uint32_t agent_count);
 void AllocateOutputMemory(OUTPUT& output, uint32_t time_steps);
+void InitializePrngStates(curandState* pPrngStates, uint32_t agent_count);
+void InitializeAges(uint32_t agent_count, curandState* pPrngStates, STATE state);
+
+void DisplayAges(uint32_t agent_count, STATE state);
 
 int main(int argc, const char* argv[])
 {
-    uint32_t agent_count = 1024*1024;
+    uint32_t agent_count = 1<<20;   // 2^20 = 1024*1024 = 1048576
     uint32_t time_steps = 90;
     float initial_prevalence = 0.01f;
 
     cxxopts::Options options(argv[0], "Agent based SEIR model on the GPU with CUDA.");
     options.add_options()
-        ("c,count",      "Number of agents     [2^10=1048576].", cxxopts::value<int>()->default_value("1048576"))
+        ("c,count",      "Number of agents     [2^20=1048576].", cxxopts::value<int>()->default_value("1048576"))
         ("t,time",       "Number of time steps [90].",           cxxopts::value<int>()->default_value("90"))
         ("p,prevalence", "Initial prevalence   [1%%].",          cxxopts::value<float>()->default_value("0.01"));
 
@@ -48,27 +54,34 @@ int main(int argc, const char* argv[])
     AllocateStateMemory(state, agent_count);
     AllocateOutputMemory(output, time_steps);
 
-    dim3 block(BLOCK_SIZE, 1, 1);
-    dim3 grid((agent_count+block.x-1)/block.x, 1, 1);
+    InitializePrngStates(prngState, agent_count);
+    InitializeAges(agent_count, prngState, state);
 
-    initialize_prng<<<grid, block>>>(prngState, agent_count);
-    CheckReturn(cudaDeviceSynchronize());
-    CheckReturn(cudaGetLastError());
+    dim3 blockDims(BLOCK_SIZE, 1, 1);
+    dim3 gridDims((agent_count+blockDims.x-1)/blockDims.x, 1, 1);
 
     force_of_infection[0] = initial_prevalence * agent_count;
-    for ( size_t step = 0; step < time_steps; ++step ) {
-        do_step<<<grid, block>>>(
+    for ( size_t step = 0; step < time_steps; ++step )
+    {
+        do_step<<<gridDims, blockDims>>>(
             agent_count,
             step,
             prngState,
             force_of_infection,
             state,
             output);
+
+        if ( step == 0 )
+        {
+            CheckReturn(cudaDeviceSynchronize());
+            CheckReturn(cudaGetLastError());
+            DisplayAges(agent_count, state);
+        }
     }
 
     CheckReturn(cudaDeviceSynchronize());
     CheckReturn(cudaGetLastError());
-    printf("Time Step,Susceptible,Exposed,Infectious,Recovered\n");
+    printf("TimeStep,Susceptible,Exposed,Infectious,Recovered\n");
     for ( size_t step = 0; step < time_steps; ++step ) {
         printf("%zd,%d,%d,%d,%d\n",
             step,
@@ -102,6 +115,7 @@ void AllocateStateMemory(STATE& state, uint32_t agent_count)
     CheckReturn(cudaMallocManaged(&state.exposure_period,   agent_count * sizeof(uint32_t)));
     CheckReturn(cudaMallocManaged(&state.infectious_period, agent_count * sizeof(uint32_t)));
     CheckReturn(cudaMallocManaged(&state.recovery_period,   agent_count * sizeof(uint32_t)));
+    CheckReturn(cudaMallocManaged(&state.age_in_days,       agent_count * sizeof(uint32_t)));
     CheckReturn(cudaMallocManaged(&state.immunity,          agent_count * sizeof(float)));
     CheckReturn(cudaMallocManaged(&state.infectivity,       agent_count * sizeof(float)));
 
@@ -126,4 +140,35 @@ void AllocateOutputMemory(OUTPUT& output, uint32_t time_steps)
     CheckReturn(cudaMemset(output.total_exposed,      0, time_steps * sizeof(uint32_t)));
     CheckReturn(cudaMemset(output.total_infectious,   0, time_steps * sizeof(uint32_t)));
     CheckReturn(cudaMemset(output.total_recovered,    0, time_steps * sizeof(uint32_t)));
+}
+
+void InitializePrngStates(curandState* pPrngStates, uint32_t agent_count)
+{
+    dim3 blockDims(BLOCK_SIZE, 1, 1);
+    dim3 gridDims((agent_count+blockDims.x-1)/blockDims.x, 1, 1);
+
+    initialize_prng<<<gridDims, blockDims>>>(pPrngStates, agent_count);
+    CheckReturn(cudaDeviceSynchronize());
+    CheckReturn(cudaGetLastError());
+}
+
+void InitializeAges(uint32_t agent_count, curandState* pPrngStates, STATE state)
+{
+    dim3 blockDims(BLOCK_SIZE, 1, 1);
+    dim3 gridDims((agent_count + blockDims.x - 1) / blockDims.x, 1, 1);
+    initialize_ages<<<gridDims, blockDims>>>(agent_count, pPrngStates, state);
+    CheckReturn(cudaDeviceSynchronize());
+    CheckReturn(cudaGetLastError());
+
+    DisplayAges(agent_count, state);
+}
+
+void DisplayAges(uint32_t agent_count, STATE state)
+{
+    std::cout << "Age (in days):" << std::endl;
+    for (uint32_t i = 0; i < min(32, agent_count); ++i)
+    {
+        std::cout << std::setw(2) << i << ": " << state.age_in_days[i] << std::endl;
+    }
+    std::cout << std::endl;
 }
