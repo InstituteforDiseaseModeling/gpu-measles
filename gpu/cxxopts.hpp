@@ -468,10 +468,10 @@ namespace cxxopts
         {
           if (negative)
           {
-            if (u > static_cast<U>(-std::numeric_limits<T>::min()))
-            {
-              throw argument_incorrect_type(text);
-            }
+            // clorton if (u > static_cast<U>(-std::numeric_limits<T>::min()))
+            // clorton {
+            // clorton   throw argument_incorrect_type(text);
+            // clorton }
           }
           else
           {

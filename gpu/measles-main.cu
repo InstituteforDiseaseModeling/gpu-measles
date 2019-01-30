@@ -18,25 +18,30 @@ void AllocateForceOfInfection(float** pForce_of_Infection, uint32_t time_steps);
 void AllocateStateMemory(STATE& state, uint32_t agent_count);
 void AllocateOutputMemory(OUTPUT& output, uint32_t time_steps);
 void InitializePrngStates(curandState* pPrngStates, uint32_t agent_count);
-void InitializeAges(uint32_t agent_count, curandState* pPrngStates, STATE state);
+void InitializeAges(uint32_t agent_count, curandState* pPrngStates, STATE& state);
+void InitializeLocations(uint32_t agent_count, curandState* pPrngStates, STATE& state, uint16_t max_locations);
 
-void DisplayAges(uint32_t agent_count, STATE state);
+void DisplayAges(uint32_t agent_count, STATE& state);
+void DisplayLocations(uint32_t agent_count, STATE& state);
 
 int main(int argc, const char* argv[])
 {
     uint32_t agent_count = 1<<20;   // 2^20 = 1024*1024 = 1048576
     uint32_t time_steps = 90;
     float initial_prevalence = 0.01f;
+    uint16_t max_locations = 1;
 
     cxxopts::Options options(argv[0], "Agent based SEIR model on the GPU with CUDA.");
     options.add_options()
         ("c,count",      "Number of agents     [2^20=1048576].", cxxopts::value<int>()->default_value("1048576"))
         ("t,time",       "Number of time steps [90].",           cxxopts::value<int>()->default_value("90"))
+        ("l,locations",  "Number of geographic nodes [1].",      cxxopts::value<int>()->default_value("1"))
         ("p,prevalence", "Initial prevalence   [1%%].",          cxxopts::value<float>()->default_value("0.01"));
 
     auto args = options.parse(argc, argv);
     agent_count        = uint32_t(args["count"].as<int>());
     time_steps         = uint32_t(args["time"].as<int>());
+    max_locations      = uint16_t(args["locations"].as<int>());
     initial_prevalence = args["prevalence"].as<float>();
 
     printf("Running %d agents for %d time steps. Initial prevalence %f.\n",
@@ -56,6 +61,7 @@ int main(int argc, const char* argv[])
 
     InitializePrngStates(prngState, agent_count);
     InitializeAges(agent_count, prngState, state);
+    InitializeLocations(agent_count, prngState, state, max_locations);
 
     dim3 blockDims(BLOCK_SIZE, 1, 1);
     dim3 gridDims((agent_count+blockDims.x-1)/blockDims.x, 1, 1);
@@ -115,7 +121,8 @@ void AllocateStateMemory(STATE& state, uint32_t agent_count)
     CheckReturn(cudaMallocManaged(&state.exposure_period,   agent_count * sizeof(uint32_t)));
     CheckReturn(cudaMallocManaged(&state.infectious_period, agent_count * sizeof(uint32_t)));
     CheckReturn(cudaMallocManaged(&state.recovery_period,   agent_count * sizeof(uint32_t)));
-    CheckReturn(cudaMallocManaged(&state.age_in_days,       agent_count * sizeof(uint32_t)));
+    CheckReturn(cudaMallocManaged(&state.age_in_days,       agent_count * sizeof(uint16_t)));
+    CheckReturn(cudaMallocManaged(&state.location,          agent_count * sizeof(uint16_t)));
     CheckReturn(cudaMallocManaged(&state.immunity,          agent_count * sizeof(float)));
     CheckReturn(cudaMallocManaged(&state.infectivity,       agent_count * sizeof(float)));
 
@@ -152,7 +159,7 @@ void InitializePrngStates(curandState* pPrngStates, uint32_t agent_count)
     CheckReturn(cudaGetLastError());
 }
 
-void InitializeAges(uint32_t agent_count, curandState* pPrngStates, STATE state)
+void InitializeAges(uint32_t agent_count, curandState* pPrngStates, STATE& state)
 {
     dim3 blockDims(BLOCK_SIZE, 1, 1);
     dim3 gridDims((agent_count + blockDims.x - 1) / blockDims.x, 1, 1);
@@ -163,12 +170,33 @@ void InitializeAges(uint32_t agent_count, curandState* pPrngStates, STATE state)
     DisplayAges(agent_count, state);
 }
 
-void DisplayAges(uint32_t agent_count, STATE state)
+void DisplayAges(uint32_t agent_count, STATE& state)
 {
     std::cout << "Age (in days):" << std::endl;
     for (uint32_t i = 0; i < min(32, agent_count); ++i)
     {
         std::cout << std::setw(2) << i << ": " << state.age_in_days[i] << std::endl;
+    }
+    std::cout << std::endl;
+}
+
+void InitializeLocations(uint32_t agent_count, curandState* pPrngStates, STATE& state, uint16_t max_locations)
+{
+    dim3 blockDims(BLOCK_SIZE, 1, 1);
+    dim3 gridDims((agent_count + blockDims.x - 1) / blockDims.x, 1, 1);
+    initialize_locations<<<gridDims, blockDims>>>(agent_count, pPrngStates, state, max_locations);
+    CheckReturn(cudaDeviceSynchronize());
+    CheckReturn(cudaGetLastError());
+
+    DisplayLocations(agent_count, state);
+}
+
+void DisplayLocations(uint32_t agent_count, STATE& state)
+{
+    std::cout << "Location (ID):" << std::endl;
+    for (uint32_t i = 0; i < min(32, agent_count); ++i)
+    {
+        std::cout << std::setw(2) << i << ": " << state.location[i] << std::endl;
     }
     std::cout << std::endl;
 }

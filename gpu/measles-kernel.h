@@ -12,7 +12,8 @@ typedef struct {
     uint32_t* exposure_period;
     uint32_t* infectious_period;
     uint32_t* recovery_period;
-    uint32_t* age_in_days;
+    uint16_t* age_in_days;
+    uint16_t* location;
     float* immunity;
     float* infectivity;
 } STATE;
@@ -25,6 +26,7 @@ typedef struct {
 } OUTPUT;
 
 __global__ void initialize_ages(uint32_t count, curandState* pPrngStates, STATE state);
+__global__ void initialize_locations(uint32_t count, curandState* pPrngStates, STATE state, uint16_t max_locations);
 
 __global__ void do_step(
     uint32_t agent_count,

@@ -24,6 +24,17 @@ __global__ void initialize_ages(uint32_t count, curandState* pPrngStates, STATE 
     }
 }
 
+__global__ void initialize_locations(uint32_t count, curandState* pPrngStates, STATE state, uint16_t max_locations)
+{
+    uint32_t tidx = (blockIdx.x * blockDim.x) + threadIdx.x;
+
+    if ( tidx < count )
+    {
+        uint16_t location = uint16_t(curand_uniform(&pPrngStates[tidx]) * max_locations);
+        state.location[tidx] = location;
+    }
+}
+
 __device__ uint32_t randrange(curandState* prngState, uint32_t min, uint32_t max);
 
 __global__ void do_step(
