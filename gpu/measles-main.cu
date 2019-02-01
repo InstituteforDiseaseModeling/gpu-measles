@@ -33,12 +33,20 @@ int main(int argc, const char* argv[])
 
     cxxopts::Options options(argv[0], "Agent based SEIR model on the GPU with CUDA.");
     options.add_options()
-        ("c,count",      "Number of agents     [2^20=1048576].", cxxopts::value<int>()->default_value("1048576"))
-        ("t,time",       "Number of time steps [90].",           cxxopts::value<int>()->default_value("90"))
-        ("l,locations",  "Number of geographic nodes [1].",      cxxopts::value<int>()->default_value("1"))
-        ("p,prevalence", "Initial prevalence   [1%%].",          cxxopts::value<float>()->default_value("0.01"));
+        ("c,count",      "Number of agents    ", cxxopts::value<int>()->default_value("1048576"))
+        ("t,time",       "Number of time steps", cxxopts::value<int>()->default_value("90"))
+        ("l,locations",  "Number of geographic", cxxopts::value<int>()->default_value("1"))
+        ("p,prevalence", "Initial prevalence  ", cxxopts::value<float>()->default_value("0.01"))
+        ("h,help",       "Show help.");
 
     auto args = options.parse(argc, argv);
+
+    if ( args.count("help") )
+    {
+        std::cout << options.help() << std::endl;
+        exit(0);
+    }
+
     agent_count        = uint32_t(args["count"].as<int>());
     time_steps         = uint32_t(args["time"].as<int>());
     max_locations      = uint16_t(args["locations"].as<int>());
@@ -116,37 +124,43 @@ void AllocateForceOfInfection(float** pForce_of_Infection, uint32_t time_steps)
 // Allocate and zero enough state for each agent.
 void AllocateStateMemory(STATE& state, uint32_t agent_count)
 {
-    CheckReturn(cudaMallocManaged(&state.is_infected,       agent_count * sizeof(uint32_t)));
-    CheckReturn(cudaMallocManaged(&state.elapsed_time,      agent_count * sizeof(uint32_t)));
-    CheckReturn(cudaMallocManaged(&state.exposure_period,   agent_count * sizeof(uint32_t)));
-    CheckReturn(cudaMallocManaged(&state.infectious_period, agent_count * sizeof(uint32_t)));
-    CheckReturn(cudaMallocManaged(&state.recovery_period,   agent_count * sizeof(uint32_t)));
-    CheckReturn(cudaMallocManaged(&state.age_in_days,       agent_count * sizeof(uint16_t)));
-    CheckReturn(cudaMallocManaged(&state.location,          agent_count * sizeof(uint16_t)));
-    CheckReturn(cudaMallocManaged(&state.immunity,          agent_count * sizeof(float)));
-    CheckReturn(cudaMallocManaged(&state.infectivity,       agent_count * sizeof(float)));
+    // Using sizeof(state.field[0]) lets us change the datatypes more easily...
 
-    CheckReturn(cudaMemset(state.is_infected,       0, agent_count * sizeof(uint32_t)));
-    CheckReturn(cudaMemset(state.elapsed_time,      0, agent_count * sizeof(uint32_t)));
-    CheckReturn(cudaMemset(state.exposure_period,   0, agent_count * sizeof(uint32_t)));
-    CheckReturn(cudaMemset(state.infectious_period, 0, agent_count * sizeof(uint32_t)));
-    CheckReturn(cudaMemset(state.recovery_period,   0, agent_count * sizeof(uint32_t)));
-    CheckReturn(cudaMemset(state.immunity,          0, agent_count * sizeof(float)));
-    CheckReturn(cudaMemset(state.infectivity,       0, agent_count * sizeof(float)));
+    CheckReturn(cudaMallocManaged(&state.is_infected,       agent_count * sizeof(state.is_infected[0])));
+    CheckReturn(cudaMallocManaged(&state.elapsed_time,      agent_count * sizeof(state.elapsed_time[0])));
+    CheckReturn(cudaMallocManaged(&state.exposure_period,   agent_count * sizeof(state.exposure_period[0])));
+    CheckReturn(cudaMallocManaged(&state.infectious_period, agent_count * sizeof(state.infectious_period[0])));
+    CheckReturn(cudaMallocManaged(&state.recovery_period,   agent_count * sizeof(state.recovery_period[0])));
+    CheckReturn(cudaMallocManaged(&state.age_in_days,       agent_count * sizeof(state.age_in_days[0])));
+    CheckReturn(cudaMallocManaged(&state.location,          agent_count * sizeof(state.location[0])));
+    CheckReturn(cudaMallocManaged(&state.spatial_contagion, agent_count * sizeof(state.spatial_contagion[0])));
+    CheckReturn(cudaMallocManaged(&state.immunity,          agent_count * sizeof(state.immunity[0])));
+    CheckReturn(cudaMallocManaged(&state.infectivity,       agent_count * sizeof(state.infectivity[0])));
+
+    CheckReturn(cudaMemset(state.is_infected,          0, agent_count * sizeof(state.is_infected[0])));
+    CheckReturn(cudaMemset(state.elapsed_time,         0, agent_count * sizeof(state.elapsed_time[0])));
+    CheckReturn(cudaMemset(state.exposure_period,      0, agent_count * sizeof(state.exposure_period[0])));
+    CheckReturn(cudaMemset(state.infectious_period,    0, agent_count * sizeof(state.infectious_period[0])));
+    CheckReturn(cudaMemset(state.recovery_period,      0, agent_count * sizeof(state.recovery_period[0])));
+    // age_in_days will be initialized elsewhere
+    // location will be initialized elsewhere
+    CheckReturn(cudaMemset(state.spatial_contagion, 0xFF, agent_count * sizeof(state.spatial_contagion[0])));
+    CheckReturn(cudaMemset(state.immunity,             0, agent_count * sizeof(state.immunity[0])));
+    CheckReturn(cudaMemset(state.infectivity,          0, agent_count * sizeof(state.infectivity[0])));
 }
 
 // Allocate and zero time steps entries for output.
 void AllocateOutputMemory(OUTPUT& output, uint32_t time_steps)
 {
-    CheckReturn(cudaMallocManaged(&output.total_susceptible,   time_steps * sizeof(uint32_t)));
-    CheckReturn(cudaMallocManaged(&output.total_exposed,       time_steps * sizeof(uint32_t)));
-    CheckReturn(cudaMallocManaged(&output.total_infectious,    time_steps * sizeof(uint32_t)));
-    CheckReturn(cudaMallocManaged(&output.total_recovered,     time_steps * sizeof(uint32_t)));
+    CheckReturn(cudaMallocManaged(&output.total_susceptible,   time_steps * sizeof(output.total_susceptible[0])));
+    CheckReturn(cudaMallocManaged(&output.total_exposed,       time_steps * sizeof(output.total_exposed[0])));
+    CheckReturn(cudaMallocManaged(&output.total_infectious,    time_steps * sizeof(output.total_infectious[0])));
+    CheckReturn(cudaMallocManaged(&output.total_recovered,     time_steps * sizeof(output.total_recovered[0])));
 
-    CheckReturn(cudaMemset(output.total_susceptible,  0, time_steps * sizeof(uint32_t)));
-    CheckReturn(cudaMemset(output.total_exposed,      0, time_steps * sizeof(uint32_t)));
-    CheckReturn(cudaMemset(output.total_infectious,   0, time_steps * sizeof(uint32_t)));
-    CheckReturn(cudaMemset(output.total_recovered,    0, time_steps * sizeof(uint32_t)));
+    CheckReturn(cudaMemset(output.total_susceptible,  0, time_steps * sizeof(output.total_susceptible[0])));
+    CheckReturn(cudaMemset(output.total_exposed,      0, time_steps * sizeof(output.total_exposed[0])));
+    CheckReturn(cudaMemset(output.total_infectious,   0, time_steps * sizeof(output.total_infectious[0])));
+    CheckReturn(cudaMemset(output.total_recovered,    0, time_steps * sizeof(output.total_recovered[0])));
 }
 
 void InitializePrngStates(curandState* pPrngStates, uint32_t agent_count)

@@ -3,19 +3,21 @@
 #include <cstdint>
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
+#include <cuda_fp16.h>
 
 __global__ void initialize_prng(curandState* prngState, uint32_t count);
 
 typedef struct {
-    uint32_t* is_infected;
-    uint32_t* elapsed_time;
-    uint32_t* exposure_period;
-    uint32_t* infectious_period;
-    uint32_t* recovery_period;
+    uint8_t* is_infected;
+    uint8_t* elapsed_time;
+    uint8_t* exposure_period;
+    uint8_t* infectious_period;
+    uint8_t* recovery_period;
     uint16_t* age_in_days;
     uint16_t* location;
-    float* immunity;
-    float* infectivity;
+    uint16_t* spatial_contagion;
+    __half* immunity;
+    __half* infectivity;
 } STATE;
 
 typedef struct {

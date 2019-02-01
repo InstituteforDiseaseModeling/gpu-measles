@@ -52,7 +52,7 @@ __global__ void do_step(
         ++state.age_in_days[tidx];
 
         float draw = curand(&prngState[tidx]) / float(UINT_MAX);
-        float susceptibility = force_of_infection[time_step] * (1.0f - state.immunity[tidx]) / agent_count;
+        float susceptibility = force_of_infection[time_step] * (1.0f - float(state.immunity[tidx])) / agent_count;
 
         if ( !bool(state.is_infected[tidx]) ) {
             if ( draw <= susceptibility ) {
@@ -63,6 +63,7 @@ __global__ void do_step(
                 state.infectivity[tidx]       = 0.0f;
                 state.recovery_period[tidx]   = (randrange(&prngState[tidx], 180, 361) - 180);
                 state.immunity[tidx]          = 1.0f;
+                state.spatial_contagion[tidx] = state.location[tidx];
             }
         }
         else {
@@ -72,22 +73,25 @@ __global__ void do_step(
             uint32_t infectious_time = min(max(timer - state.exposure_period[tidx], 0), infectious_max);
             state.infectivity[tidx] = max(1.0f - pow(2.0f * float(infectious_time) / infectious_max - 1, 2), 0.0f);
             if ( timer > (state.exposure_period[tidx] + infectious_max) )
+            {
                 state.is_infected[tidx] = uint32_t(false);
+                state.spatial_contagion[tidx] = 0xFFFF;
+            }
         }
     }
 
     typedef cub::BlockReduce<float, BLOCK_SIZE> BlockReduceFloat;
     __shared__ typename BlockReduceFloat::TempStorage temp_float_storage;
-    float aggregate = BlockReduceFloat(temp_float_storage).Sum((tidx < agent_count) ? state.infectivity[tidx] : 0.0f);
+
+    float aggregate = BlockReduceFloat(temp_float_storage).Sum((tidx < agent_count) ? float(state.infectivity[tidx]) : 0.0f);
+
     typedef cub::BlockReduce<uint32_t, BLOCK_SIZE> BlockReduceUint32;
     __shared__ typename BlockReduceUint32::TempStorage temp_uint_storage;
-    uint32_t susceptible_count = BlockReduceUint32(temp_uint_storage).Sum((tidx < agent_count) && !state.is_infected[tidx] && (state.immunity[tidx] == 0.0f) ? 1 : 0);
-    __syncthreads();
-    uint32_t exposed_count = BlockReduceUint32(temp_uint_storage).Sum((tidx < agent_count) && state.is_infected[tidx] && (state.infectivity[tidx] == 0.0f) ? 1 : 0);
-    __syncthreads();
-    uint32_t infectious_count = BlockReduceUint32(temp_uint_storage).Sum(((tidx < agent_count) && state.is_infected[tidx] && (state.infectivity[tidx] > 0.0f)) ? 1 : 0);
-    __syncthreads();
-    uint32_t recovered_count = BlockReduceUint32(temp_uint_storage).Sum((tidx < agent_count) && !state.is_infected[tidx] && (state.immunity[tidx] > 0.0f) ? 1 : 0);
+
+    uint32_t susceptible_count = BlockReduceUint32(temp_uint_storage).Sum((tidx < agent_count) && !state.is_infected[tidx] && (float(state.immunity[tidx])    == 0) ? 1 : 0); __syncthreads();
+    uint32_t exposed_count     = BlockReduceUint32(temp_uint_storage).Sum((tidx < agent_count) &&  state.is_infected[tidx] && (float(state.infectivity[tidx]) == 0) ? 1 : 0); __syncthreads();
+    uint32_t infectious_count  = BlockReduceUint32(temp_uint_storage).Sum((tidx < agent_count) &&  state.is_infected[tidx] && (float(state.infectivity[tidx])  > 0) ? 1 : 0); __syncthreads();
+    uint32_t recovered_count   = BlockReduceUint32(temp_uint_storage).Sum((tidx < agent_count) && !state.is_infected[tidx] && (float(state.immunity[tidx])     > 0) ? 1 : 0);
 
     if ( threadIdx.x == 0 )
     {
