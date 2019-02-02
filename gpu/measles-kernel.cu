@@ -1,5 +1,5 @@
 #include "measles-kernel.h"
-#include "../cub-1.8.0/cub/cub.cuh"
+#include "cub/cub/cub.cuh"
 #include "block-size.h"
 
 __global__ void initialize_prng(curandState* prngState, uint32_t count)

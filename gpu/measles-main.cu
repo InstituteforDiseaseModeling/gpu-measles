@@ -75,6 +75,7 @@ int main(int argc, const char* argv[])
     dim3 gridDims((agent_count+blockDims.x-1)/blockDims.x, 1, 1);
 
     force_of_infection[0] = initial_prevalence * agent_count;
+    auto start = clock();
     for ( size_t step = 0; step < time_steps; ++step )
     {
         do_step<<<gridDims, blockDims>>>(
@@ -92,6 +93,7 @@ int main(int argc, const char* argv[])
             DisplayAges(agent_count, state);
         }
     }
+    auto end = clock();
 
     CheckReturn(cudaDeviceSynchronize());
     CheckReturn(cudaGetLastError());
@@ -104,6 +106,7 @@ int main(int argc, const char* argv[])
             output.total_infectious[step],
             output.total_recovered[step]);
     }
+    std::cout << (1000 * uint64_t(end - start) / double(CLOCKS_PER_SEC)) << " milliseconds for simulation." << std::endl;
 }
 
 // Allocate and zero one instance of curandState for each agent/thread
