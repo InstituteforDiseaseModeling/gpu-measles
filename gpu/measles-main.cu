@@ -24,6 +24,8 @@ void InitializeLocations(uint32_t agent_count, curandState* pPrngStates, STATE& 
 void DisplayAges(uint32_t agent_count, STATE& state);
 void DisplayLocations(uint32_t agent_count, STATE& state);
 
+bool debug = false;
+
 int main(int argc, const char* argv[])
 {
     uint32_t agent_count = 1<<20;   // 2^20 = 1024*1024 = 1048576
@@ -37,6 +39,7 @@ int main(int argc, const char* argv[])
         ("t,time",       "Number of time steps", cxxopts::value<int>()->default_value("90"))
         ("l,locations",  "Number of geographic", cxxopts::value<int>()->default_value("1"))
         ("p,prevalence", "Initial prevalence  ", cxxopts::value<float>()->default_value("0.01"))
+        ("d,debug",      "Debug               ")
         ("h,help",       "Show help.");
 
     auto args = options.parse(argc, argv);
@@ -51,6 +54,8 @@ int main(int argc, const char* argv[])
     time_steps         = uint32_t(args["time"].as<int>());
     max_locations      = uint16_t(args["locations"].as<int>());
     initial_prevalence = args["prevalence"].as<float>();
+
+    debug = bool( args.count("debug") );
 
     printf("Running %d agents for %d time steps. Initial prevalence %f.\n",
            agent_count, time_steps, initial_prevalence);
@@ -106,6 +111,7 @@ int main(int argc, const char* argv[])
             output.total_infectious[step],
             output.total_recovered[step]);
     }
+
     std::cout << (1000 * uint64_t(end - start) / double(CLOCKS_PER_SEC)) << " milliseconds for simulation." << std::endl;
 }
 
@@ -113,7 +119,7 @@ int main(int argc, const char* argv[])
 void AllocatePrngState(curandState** pPrngState, uint32_t agent_count)
 {
     CheckReturn(cudaMallocManaged(pPrngState, agent_count * sizeof(curandState)));
-    CheckReturn(cudaMemset(*pPrngState, 0, agent_count * sizeof(curandState)));
+    // CheckReturn(cudaMemset(*pPrngState, 0, agent_count * sizeof(curandState)));
 }
 
 // Allocate time_steps + 1 entries for force_of_infection (each time step
@@ -140,6 +146,13 @@ void AllocateStateMemory(STATE& state, uint32_t agent_count)
     CheckReturn(cudaMallocManaged(&state.immunity,          agent_count * sizeof(state.immunity[0])));
     CheckReturn(cudaMallocManaged(&state.infectivity,       agent_count * sizeof(state.infectivity[0])));
 
+    dim3 blockDims(BLOCK_SIZE, 1, 1);
+    dim3 gridDims((agent_count + blockDims.x - 1) / blockDims.x, 1, 1);
+    zero_state<<<gridDims, blockDims>>>(agent_count, state);
+    CheckReturn(cudaDeviceSynchronize());
+    CheckReturn(cudaGetLastError());
+
+    /*
     CheckReturn(cudaMemset(state.is_infected,          0, agent_count * sizeof(state.is_infected[0])));
     CheckReturn(cudaMemset(state.elapsed_time,         0, agent_count * sizeof(state.elapsed_time[0])));
     CheckReturn(cudaMemset(state.exposure_period,      0, agent_count * sizeof(state.exposure_period[0])));
@@ -150,6 +163,7 @@ void AllocateStateMemory(STATE& state, uint32_t agent_count)
     CheckReturn(cudaMemset(state.spatial_contagion, 0xFF, agent_count * sizeof(state.spatial_contagion[0])));
     CheckReturn(cudaMemset(state.immunity,             0, agent_count * sizeof(state.immunity[0])));
     CheckReturn(cudaMemset(state.infectivity,          0, agent_count * sizeof(state.infectivity[0])));
+    */
 }
 
 // Allocate and zero time steps entries for output.
@@ -189,6 +203,8 @@ void InitializeAges(uint32_t agent_count, curandState* pPrngStates, STATE& state
 
 void DisplayAges(uint32_t agent_count, STATE& state)
 {
+    if ( !debug) return;
+
     std::cout << "Age (in days):" << std::endl;
     for (uint32_t i = 0; i < min(32, agent_count); ++i)
     {
@@ -210,6 +226,8 @@ void InitializeLocations(uint32_t agent_count, curandState* pPrngStates, STATE& 
 
 void DisplayLocations(uint32_t agent_count, STATE& state)
 {
+    if ( !debug ) return;
+
     std::cout << "Location (ID):" << std::endl;
     for (uint32_t i = 0; i < min(32, agent_count); ++i)
     {

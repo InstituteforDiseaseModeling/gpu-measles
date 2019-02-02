@@ -27,6 +27,8 @@ typedef struct {
     uint32_t* total_recovered;
 } OUTPUT;
 
+__global__ void zero_state(uint32_t count, STATE state);
+
 __global__ void initialize_ages(uint32_t count, curandState* pPrngStates, STATE state);
 __global__ void initialize_locations(uint32_t count, curandState* pPrngStates, STATE state, uint16_t max_locations);
 

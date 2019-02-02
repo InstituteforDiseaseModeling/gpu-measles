@@ -10,6 +10,25 @@ __global__ void initialize_prng(curandState* prngState, uint32_t count)
     }
 }
 
+__global__ void zero_state(uint32_t count, STATE state)
+{
+    uint32_t tidx = (blockIdx.x * blockDim.x) + threadIdx.x;
+
+    if ( tidx < count )
+    {
+        state.is_infected[tidx]       =    0;
+        state.elapsed_time[tidx]      =    0;
+        state.exposure_period[tidx]   =    0;
+        state.infectious_period[tidx] =    0;
+        state.recovery_period[tidx]   =    0;
+        // state.age_in_days[tidx]       =    0;
+        // state.location[tidx]          =    0;
+        state.spatial_contagion[tidx] = 0xFF;
+        state.immunity[tidx]          =    0;
+        state.infectivity[tidx]       =    0;
+    }
+}
+
 #define MEAN_AGE    ( 25 * 365)
 #define MAX_AGE     (100 * 365)
 

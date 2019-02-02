@@ -1,6 +1,6 @@
 #include <cmath>
 
-#include "../cub-1.8.0/cub/device/device_histogram.cuh" // #include <cub/cub.cuh>
+#include "cub/cub/device/device_histogram.cuh" // #include <cub/cub.cuh>
 
 #include "kernel.h"
 
