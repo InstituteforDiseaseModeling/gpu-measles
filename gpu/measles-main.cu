@@ -24,6 +24,8 @@ void InitializeLocations(uint32_t agent_count, uint16_t max_locations, STATE& st
 void DisplayAges(uint32_t agent_count, STATE& state);
 void DisplayLocations(uint32_t agent_count, STATE& state);
 
+void PrintElapsedTime(clock_t start, clock_t end, const char* msg = nullptr, std::ostream& stream = std::cerr);
+
 bool debug = false;
 
 int main(int argc, const char* argv[])
@@ -35,11 +37,11 @@ int main(int argc, const char* argv[])
 
     cxxopts::Options options(argv[0], "Agent based SEIR model on the GPU with CUDA.");
     options.add_options()
-        ("c,count",      "Number of agents    ", cxxopts::value<int>()->default_value("1048576"))
-        ("t,time",       "Number of time steps", cxxopts::value<int>()->default_value("90"))
-        ("l,locations",  "Number of geographic", cxxopts::value<int>()->default_value("1"))
-        ("p,prevalence", "Initial prevalence  ", cxxopts::value<float>()->default_value("0.01"))
-        ("d,debug",      "Debug               ")
+        ("c,count",      "Number of agents     ", cxxopts::value<int>()->default_value("1048576"))
+        ("t,time",       "Number of time steps ", cxxopts::value<int>()->default_value("90"))
+        ("l,locations",  "Number of geographies", cxxopts::value<int>()->default_value("1"))
+        ("p,prevalence", "Initial prevalence   ", cxxopts::value<float>()->default_value("0.01"))
+        ("d,debug",      "Turn on debug output")
         ("h,help",       "Show help.");
 
     auto args = options.parse(argc, argv);
@@ -98,10 +100,13 @@ int main(int argc, const char* argv[])
             DisplayAges(agent_count, state);
         }
     }
-    auto end = clock();
 
     CheckReturn(cudaDeviceSynchronize());
     CheckReturn(cudaGetLastError());
+
+    auto end = clock();
+    PrintElapsedTime(start, end, "Simulation");
+
     printf("TimeStep,Susceptible,Exposed,Infectious,Recovered\n");
     for ( size_t step = 0; step < time_steps; ++step ) {
         printf("%zd,%d,%d,%d,%d\n",
@@ -111,29 +116,39 @@ int main(int argc, const char* argv[])
             output.total_infectious[step],
             output.total_recovered[step]);
     }
-
-    std::cout << (1000 * uint64_t(end - start) / double(CLOCKS_PER_SEC)) << " milliseconds for simulation." << std::endl;
 }
 
 // Allocate and zero one instance of curandState for each agent/thread
 void AllocatePrngState(uint32_t agent_count, curandState** pPrngState)
 {
+    auto start = clock();
+
     CheckReturn(cudaMallocManaged(pPrngState, agent_count * sizeof(curandState)));
     // CheckReturn(cudaMemset(*pPrngState, 0, agent_count * sizeof(curandState)));
+
+    auto end = clock();
+    PrintElapsedTime(start, end, "AllocatePrngState");
 }
 
 // Allocate time_steps + 1 entries for force_of_infection (each time step
 // updates the force of infection for the next time step).
 void AllocateForceOfInfection(uint32_t time_steps, float** pForce_of_Infection)
 {
+    auto start = clock();
+
     CheckReturn(cudaMallocManaged(pForce_of_Infection, (time_steps + 1) * sizeof(float)));
     CheckReturn(cudaMemset(*pForce_of_Infection, 0, (time_steps + 1) * sizeof(float)));
+
+    auto end = clock();
+    PrintElapsedTime(start, end, "AllocateForceOfInfection");
 }
 
 // Allocate and zero enough state for each agent.
 void AllocateStateMemory(uint32_t agent_count, STATE& state)
 {
     // Using sizeof(state.field[0]) lets us change the datatypes more easily...
+
+    auto start = clock();
 
     CheckReturn(cudaMallocManaged(&state.is_infected,       agent_count * sizeof(state.is_infected[0])));
     CheckReturn(cudaMallocManaged(&state.elapsed_time,      agent_count * sizeof(state.elapsed_time[0])));
@@ -164,11 +179,15 @@ void AllocateStateMemory(uint32_t agent_count, STATE& state)
     CheckReturn(cudaMemset(state.immunity,             0, agent_count * sizeof(state.immunity[0])));
     CheckReturn(cudaMemset(state.infectivity,          0, agent_count * sizeof(state.infectivity[0])));
     */
+    auto end = clock();
+    PrintElapsedTime(start, end, "AllocateStateMemory");
 }
 
 // Allocate and zero time steps entries for output.
 void AllocateOutputMemory(uint32_t time_steps, OUTPUT& output)
 {
+    auto start = clock();
+
     CheckReturn(cudaMallocManaged(&output.total_susceptible,   time_steps * sizeof(output.total_susceptible[0])));
     CheckReturn(cudaMallocManaged(&output.total_exposed,       time_steps * sizeof(output.total_exposed[0])));
     CheckReturn(cudaMallocManaged(&output.total_infectious,    time_steps * sizeof(output.total_infectious[0])));
@@ -186,20 +205,30 @@ void AllocateOutputMemory(uint32_t time_steps, OUTPUT& output)
     CheckReturn(cudaMemset(output.total_infectious,   0, time_steps * sizeof(output.total_infectious[0])));
     CheckReturn(cudaMemset(output.total_recovered,    0, time_steps * sizeof(output.total_recovered[0])));
     */
+
+    auto end = clock();
+    PrintElapsedTime(start, end, "AllocateOutputMemory");
 }
 
 void InitializePrngStates(uint32_t agent_count, curandState* pPrngStates)
 {
+    auto start = clock();
+
     dim3 blockDims(BLOCK_SIZE, 1, 1);
     dim3 gridDims((agent_count+blockDims.x-1)/blockDims.x, 1, 1);
 
     initialize_prng<<<gridDims, blockDims>>>(agent_count, pPrngStates);
     CheckReturn(cudaDeviceSynchronize());
     CheckReturn(cudaGetLastError());
+
+    auto end = clock();
+    PrintElapsedTime(start, end, "InitializePrngStates");
 }
 
 void InitializeAges(uint32_t agent_count, STATE& state, curandState* pPrngStates)
 {
+    auto start = clock();
+
     dim3 blockDims(BLOCK_SIZE, 1, 1);
     dim3 gridDims((agent_count + blockDims.x - 1) / blockDims.x, 1, 1);
     initialize_ages<<<gridDims, blockDims>>>(agent_count, state, pPrngStates);
@@ -207,6 +236,9 @@ void InitializeAges(uint32_t agent_count, STATE& state, curandState* pPrngStates
     CheckReturn(cudaGetLastError());
 
     DisplayAges(agent_count, state);
+
+    auto end = clock();
+    PrintElapsedTime(start, end, "InitializeAges");
 }
 
 void DisplayAges(uint32_t agent_count, STATE& state)
@@ -223,6 +255,8 @@ void DisplayAges(uint32_t agent_count, STATE& state)
 
 void InitializeLocations(uint32_t agent_count, uint16_t max_locations, STATE& state, curandState* pPrngStates)
 {
+    auto start = clock();
+
     dim3 blockDims(BLOCK_SIZE, 1, 1);
     dim3 gridDims((agent_count + blockDims.x - 1) / blockDims.x, 1, 1);
     initialize_locations<<<gridDims, blockDims>>>(agent_count, max_locations, state, pPrngStates);
@@ -230,6 +264,9 @@ void InitializeLocations(uint32_t agent_count, uint16_t max_locations, STATE& st
     CheckReturn(cudaGetLastError());
 
     DisplayLocations(agent_count, state);
+
+    auto end = clock();
+    PrintElapsedTime(start, end, "InitializeLocations");
 }
 
 void DisplayLocations(uint32_t agent_count, STATE& state)
@@ -242,4 +279,13 @@ void DisplayLocations(uint32_t agent_count, STATE& state)
         std::cout << std::setw(2) << i << ": " << state.location[i] << std::endl;
     }
     std::cout << std::endl;
+}
+
+void PrintElapsedTime(clock_t start, clock_t end, const char* msg, std::ostream& stream)
+{
+    if ( msg )
+    {
+        stream << msg << " : ";
+    }
+    stream << (1000 * uint64_t(end - start) / double(CLOCKS_PER_SEC)) << " milliseconds" << std::endl;
 }
