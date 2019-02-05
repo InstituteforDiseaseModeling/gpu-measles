@@ -2,7 +2,7 @@
 #include "cub/cub/cub.cuh"
 #include "block-size.h"
 
-__global__ void initialize_prng(curandState* prngState, uint32_t count)
+__global__ void initialize_prng(uint32_t count, curandState* prngState)
 {
     uint32_t i = threadIdx.x + (blockIdx.x * blockDim.x);
     if ( i < count ) {
@@ -29,10 +29,23 @@ __global__ void zero_state(uint32_t count, STATE state)
     }
 }
 
+__global__ void zero_output(uint32_t time_steps, OUTPUT output)
+{
+    uint32_t tidx = (blockIdx.x * blockDim.x) + threadIdx.x;
+
+    if ( tidx < time_steps )
+    {
+        output.total_susceptible[tidx] = 0;
+        output.total_exposed[tidx]     = 0;
+        output.total_infectious[tidx]  = 0;
+        output.total_recovered[tidx]   = 0;
+    }
+}
+
 #define MEAN_AGE    ( 25 * 365)
 #define MAX_AGE     (100 * 365)
 
-__global__ void initialize_ages(uint32_t count, curandState* pPrngStates, STATE state)
+__global__ void initialize_ages(uint32_t count, STATE state, curandState* pPrngStates)
 {
     uint32_t tidx = (blockIdx.x * blockDim.x) + threadIdx.x;
 
@@ -43,7 +56,7 @@ __global__ void initialize_ages(uint32_t count, curandState* pPrngStates, STATE 
     }
 }
 
-__global__ void initialize_locations(uint32_t count, curandState* pPrngStates, STATE state, uint16_t max_locations)
+__global__ void initialize_locations(uint32_t count, uint16_t max_locations, STATE state, curandState* pPrngStates)
 {
     uint32_t tidx = (blockIdx.x * blockDim.x) + threadIdx.x;
 
@@ -59,10 +72,10 @@ __device__ uint32_t randrange(curandState* prngState, uint32_t min, uint32_t max
 __global__ void do_step(
     uint32_t agent_count,
     uint32_t time_step,
-    curandState* prngState,
     float* force_of_infection,
     STATE state,
-    OUTPUT output)
+    OUTPUT output,
+    curandState* prngState)
 {
     int tidx = threadIdx.x + (blockIdx.x * blockDim.x);
     if ( tidx < agent_count ) {

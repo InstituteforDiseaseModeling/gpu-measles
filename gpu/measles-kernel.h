@@ -5,7 +5,7 @@
 #include <curand_kernel.h>
 #include <cuda_fp16.h>
 
-__global__ void initialize_prng(curandState* prngState, uint32_t count);
+__global__ void initialize_prng(uint32_t count, curandState* prngState);
 
 typedef struct {
     uint8_t* is_infected;
@@ -28,15 +28,16 @@ typedef struct {
 } OUTPUT;
 
 __global__ void zero_state(uint32_t count, STATE state);
+__global__ void zero_output(uint32_t time_steps, OUTPUT output);
 
-__global__ void initialize_ages(uint32_t count, curandState* pPrngStates, STATE state);
-__global__ void initialize_locations(uint32_t count, curandState* pPrngStates, STATE state, uint16_t max_locations);
+__global__ void initialize_ages(uint32_t count, STATE state, curandState* pPrngStates);
+__global__ void initialize_locations(uint32_t count, uint16_t max_locations, STATE state, curandState* pPrngStates);
 
 __global__ void do_step(
     uint32_t agent_count,
     uint32_t time_step,
-    curandState* prngState,
     float* force_of_infection,
     STATE state,
-    OUTPUT output
+    OUTPUT output,
+    curandState* prngState
 );

@@ -13,13 +13,13 @@
 #include "measles-kernel.h"
 #include "block-size.h"
 
-void AllocatePrngState(curandState** pPrngState, uint32_t agent_count);
-void AllocateForceOfInfection(float** pForce_of_Infection, uint32_t time_steps);
-void AllocateStateMemory(STATE& state, uint32_t agent_count);
-void AllocateOutputMemory(OUTPUT& output, uint32_t time_steps);
-void InitializePrngStates(curandState* pPrngStates, uint32_t agent_count);
-void InitializeAges(uint32_t agent_count, curandState* pPrngStates, STATE& state);
-void InitializeLocations(uint32_t agent_count, curandState* pPrngStates, STATE& state, uint16_t max_locations);
+void AllocatePrngState(uint32_t agent_count, curandState** pPrngState);
+void AllocateForceOfInfection(uint32_t time_steps, float** pForce_of_Infection);
+void AllocateStateMemory(uint32_t agent_count, STATE& state);
+void AllocateOutputMemory(uint32_t time_steps, OUTPUT& output);
+void InitializePrngStates(uint32_t agent_count, curandState* pPrngStates);
+void InitializeAges(uint32_t agent_count, STATE& state, curandState* pPrngStates);
+void InitializeLocations(uint32_t agent_count, uint16_t max_locations, STATE& state, curandState* pPrngStates);
 
 void DisplayAges(uint32_t agent_count, STATE& state);
 void DisplayLocations(uint32_t agent_count, STATE& state);
@@ -67,14 +67,14 @@ int main(int argc, const char* argv[])
     STATE state;
     OUTPUT output;
 
-    AllocatePrngState(&prngState, agent_count);
-    AllocateForceOfInfection(&force_of_infection, time_steps);
-    AllocateStateMemory(state, agent_count);
-    AllocateOutputMemory(output, time_steps);
+    AllocatePrngState(agent_count, &prngState);
+    AllocateForceOfInfection(time_steps, &force_of_infection);
+    AllocateStateMemory(agent_count, state);
+    AllocateOutputMemory(time_steps, output);
 
-    InitializePrngStates(prngState, agent_count);
-    InitializeAges(agent_count, prngState, state);
-    InitializeLocations(agent_count, prngState, state, max_locations);
+    InitializePrngStates(agent_count, prngState);
+    InitializeAges(agent_count, state, prngState);
+    InitializeLocations(agent_count, max_locations, state, prngState);
 
     dim3 blockDims(BLOCK_SIZE, 1, 1);
     dim3 gridDims((agent_count+blockDims.x-1)/blockDims.x, 1, 1);
@@ -86,10 +86,10 @@ int main(int argc, const char* argv[])
         do_step<<<gridDims, blockDims>>>(
             agent_count,
             step,
-            prngState,
             force_of_infection,
             state,
-            output);
+            output,
+            prngState);
 
         if ( step == 0 )
         {
@@ -116,7 +116,7 @@ int main(int argc, const char* argv[])
 }
 
 // Allocate and zero one instance of curandState for each agent/thread
-void AllocatePrngState(curandState** pPrngState, uint32_t agent_count)
+void AllocatePrngState(uint32_t agent_count, curandState** pPrngState)
 {
     CheckReturn(cudaMallocManaged(pPrngState, agent_count * sizeof(curandState)));
     // CheckReturn(cudaMemset(*pPrngState, 0, agent_count * sizeof(curandState)));
@@ -124,14 +124,14 @@ void AllocatePrngState(curandState** pPrngState, uint32_t agent_count)
 
 // Allocate time_steps + 1 entries for force_of_infection (each time step
 // updates the force of infection for the next time step).
-void AllocateForceOfInfection(float** pForce_of_Infection, uint32_t time_steps)
+void AllocateForceOfInfection(uint32_t time_steps, float** pForce_of_Infection)
 {
     CheckReturn(cudaMallocManaged(pForce_of_Infection, (time_steps + 1) * sizeof(float)));
     CheckReturn(cudaMemset(*pForce_of_Infection, 0, (time_steps + 1) * sizeof(float)));
 }
 
 // Allocate and zero enough state for each agent.
-void AllocateStateMemory(STATE& state, uint32_t agent_count)
+void AllocateStateMemory(uint32_t agent_count, STATE& state)
 {
     // Using sizeof(state.field[0]) lets us change the datatypes more easily...
 
@@ -167,34 +167,42 @@ void AllocateStateMemory(STATE& state, uint32_t agent_count)
 }
 
 // Allocate and zero time steps entries for output.
-void AllocateOutputMemory(OUTPUT& output, uint32_t time_steps)
+void AllocateOutputMemory(uint32_t time_steps, OUTPUT& output)
 {
     CheckReturn(cudaMallocManaged(&output.total_susceptible,   time_steps * sizeof(output.total_susceptible[0])));
     CheckReturn(cudaMallocManaged(&output.total_exposed,       time_steps * sizeof(output.total_exposed[0])));
     CheckReturn(cudaMallocManaged(&output.total_infectious,    time_steps * sizeof(output.total_infectious[0])));
     CheckReturn(cudaMallocManaged(&output.total_recovered,     time_steps * sizeof(output.total_recovered[0])));
 
+    dim3 blockDims(BLOCK_SIZE, 1, 1);
+    dim3 gridDims((time_steps + blockDims.x - 1) / blockDims.x, 1, 1);
+    zero_output<<<gridDims, blockDims>>>(time_steps, output);
+    CheckReturn(cudaDeviceSynchronize());
+    CheckReturn(cudaGetLastError());
+
+    /*
     CheckReturn(cudaMemset(output.total_susceptible,  0, time_steps * sizeof(output.total_susceptible[0])));
     CheckReturn(cudaMemset(output.total_exposed,      0, time_steps * sizeof(output.total_exposed[0])));
     CheckReturn(cudaMemset(output.total_infectious,   0, time_steps * sizeof(output.total_infectious[0])));
     CheckReturn(cudaMemset(output.total_recovered,    0, time_steps * sizeof(output.total_recovered[0])));
+    */
 }
 
-void InitializePrngStates(curandState* pPrngStates, uint32_t agent_count)
+void InitializePrngStates(uint32_t agent_count, curandState* pPrngStates)
 {
     dim3 blockDims(BLOCK_SIZE, 1, 1);
     dim3 gridDims((agent_count+blockDims.x-1)/blockDims.x, 1, 1);
 
-    initialize_prng<<<gridDims, blockDims>>>(pPrngStates, agent_count);
+    initialize_prng<<<gridDims, blockDims>>>(agent_count, pPrngStates);
     CheckReturn(cudaDeviceSynchronize());
     CheckReturn(cudaGetLastError());
 }
 
-void InitializeAges(uint32_t agent_count, curandState* pPrngStates, STATE& state)
+void InitializeAges(uint32_t agent_count, STATE& state, curandState* pPrngStates)
 {
     dim3 blockDims(BLOCK_SIZE, 1, 1);
     dim3 gridDims((agent_count + blockDims.x - 1) / blockDims.x, 1, 1);
-    initialize_ages<<<gridDims, blockDims>>>(agent_count, pPrngStates, state);
+    initialize_ages<<<gridDims, blockDims>>>(agent_count, state, pPrngStates);
     CheckReturn(cudaDeviceSynchronize());
     CheckReturn(cudaGetLastError());
 
@@ -213,11 +221,11 @@ void DisplayAges(uint32_t agent_count, STATE& state)
     std::cout << std::endl;
 }
 
-void InitializeLocations(uint32_t agent_count, curandState* pPrngStates, STATE& state, uint16_t max_locations)
+void InitializeLocations(uint32_t agent_count, uint16_t max_locations, STATE& state, curandState* pPrngStates)
 {
     dim3 blockDims(BLOCK_SIZE, 1, 1);
     dim3 gridDims((agent_count + blockDims.x - 1) / blockDims.x, 1, 1);
-    initialize_locations<<<gridDims, blockDims>>>(agent_count, pPrngStates, state, max_locations);
+    initialize_locations<<<gridDims, blockDims>>>(agent_count, max_locations, state, pPrngStates);
     CheckReturn(cudaDeviceSynchronize());
     CheckReturn(cudaGetLastError());
 
