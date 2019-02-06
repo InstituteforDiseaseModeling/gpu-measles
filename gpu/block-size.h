@@ -1,3 +1,3 @@
 #pragma once
 
-#define BLOCK_SIZE  (512)
+#define THREADS_PER_BLOCK   (512)

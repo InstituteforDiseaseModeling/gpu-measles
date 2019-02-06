@@ -26,7 +26,7 @@ LD_FLAGS=""
 CXX_FLAGS=-I/usr/local/include -lineinfo -rdc=true -std=c++11 --maxrregcount=63 --ptxas-options=-v
 #################################################################################################
 
-measles: measles-main.cu measles-kernel.cu
+measles: measles-main.cu measles-init.cu measles-kernel.cu
 	nvcc \
 		$(GENCODE_FLAGS) \
 		$(CXX_FLAGS) \

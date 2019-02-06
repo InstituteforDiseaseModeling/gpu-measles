@@ -10,21 +10,30 @@
 
 #include "cxxopts.hpp"
 
+#include "measles-init.h"
 #include "measles-kernel.h"
 #include "block-size.h"
 
 void AllocatePrngState(uint32_t agent_count, curandState** pPrngState);
-void AllocateForceOfInfection(uint32_t time_steps, float** pForce_of_Infection);
 void AllocateStateMemory(uint32_t agent_count, STATE& state);
-void AllocateOutputMemory(uint32_t time_steps, OUTPUT& output);
+void AllocateOutputMemory(uint32_t time_steps, uint32_t locations, OUTPUT& output);
 void InitializePrngStates(uint32_t agent_count, curandState* pPrngStates);
 void InitializeAges(uint32_t agent_count, STATE& state, curandState* pPrngStates);
-void InitializeLocations(uint32_t agent_count, uint16_t max_locations, STATE& state, curandState* pPrngStates);
+
+void PopulatePopulation(uint32_t agent_count, uint32_t num_locations, uint32_t* populations);
+void InitializeContagion(uint32_t num_locations, uint32_t* populations, float* contagion, float initial_prevalence);
+
+void InitializeLocations(uint32_t agent_count, uint16_t num_locations, STATE& state, uint32_t* populations, curandState* pPrngStates);
+void IncrementCurrent(uint32_t locations, OUTPUT& current);
 
 void DisplayAges(uint32_t agent_count, STATE& state);
 void DisplayLocations(uint32_t agent_count, STATE& state);
 
 void PrintElapsedTime(clock_t start, clock_t end, const char* msg = nullptr, std::ostream& stream = std::cerr);
+
+void dumpPopulations(uint32_t num_locations, uint32_t* population);
+void dumpContagion(uint32_t num_locations, float* contagion);
+void dumpOutput(uint32_t time_steps, uint32_t num_locations, OUTPUT& output);
 
 bool debug = false;
 
@@ -33,7 +42,8 @@ int main(int argc, const char* argv[])
     uint32_t agent_count = 1<<20;   // 2^20 = 1024*1024 = 1048576
     uint32_t time_steps = 90;
     float initial_prevalence = 0.01f;
-    uint16_t max_locations = 1;
+    uint16_t num_locations = 1;
+//    uint16_t location_stride = 1;
 
     cxxopts::Options options(argv[0], "Agent based SEIR model on the GPU with CUDA.");
     options.add_options()
@@ -54,8 +64,14 @@ int main(int argc, const char* argv[])
 
     agent_count        = uint32_t(args["count"].as<int>());
     time_steps         = uint32_t(args["time"].as<int>());
-    max_locations      = uint16_t(args["locations"].as<int>());
+    num_locations      = uint16_t(args["locations"].as<int>());
     initial_prevalence = args["prevalence"].as<float>();
+
+//    if ( num_locations > 1 )
+//    {
+//        // round up to next multiple of 32
+//        location_stride = (num_locations + 31) & ~31;
+//    }
 
     debug = bool( args.count("debug") );
 
@@ -64,39 +80,58 @@ int main(int argc, const char* argv[])
 
     curandState* prngState;
 
-    float* force_of_infection;
-
     STATE state;
     OUTPUT output;
+    OUTPUT initial;
 
     AllocatePrngState(agent_count, &prngState);
-    AllocateForceOfInfection(time_steps, &force_of_infection);
     AllocateStateMemory(agent_count, state);
-    AllocateOutputMemory(time_steps, output);
+    AllocateOutputMemory(time_steps, num_locations, output);
+    AllocateOutputMemory(1, num_locations, initial);
 
     InitializePrngStates(agent_count, prngState);
     InitializeAges(agent_count, state, prngState);
-    InitializeLocations(agent_count, max_locations, state, prngState);
 
-    dim3 blockDims(BLOCK_SIZE, 1, 1);
+    PopulatePopulation(agent_count, num_locations, initial.population);
+    InitializeContagion(num_locations, initial.population, initial.contagion, initial_prevalence);
+
+    InitializeLocations(agent_count, num_locations, state, initial.population, prngState);
+
+    if ( debug )
+    {
+        dumpPopulations(num_locations, initial.population);
+        dumpContagion(num_locations, initial.contagion);
+        dumpOutput(4, num_locations, output);
+    }
+
+    dim3 blockDims(THREADS_PER_BLOCK, 1, 1);
     dim3 gridDims((agent_count+blockDims.x-1)/blockDims.x, 1, 1);
 
-    force_of_infection[0] = initial_prevalence * agent_count;
+    uint32_t* populations = initial.population;
+    float* contagion      = initial.contagion;
+    OUTPUT current = output;
+
     auto start = clock();
     for ( size_t step = 0; step < time_steps; ++step )
     {
         do_step<<<gridDims, blockDims>>>(
             agent_count,
             step,
-            force_of_infection,
+            populations,
+            contagion,
             state,
-            output,
+            current,
             prngState);
+
+        CheckReturn(cudaDeviceSynchronize());
+        CheckReturn(cudaGetLastError());
+
+            // Capture this time step's contagion to use in the next time step
+        contagion = current.contagion;
+        IncrementCurrent(num_locations, current);
 
         if ( step == 0 )
         {
-            CheckReturn(cudaDeviceSynchronize());
-            CheckReturn(cudaGetLastError());
             DisplayAges(agent_count, state);
         }
     }
@@ -107,14 +142,30 @@ int main(int argc, const char* argv[])
     auto end = clock();
     PrintElapsedTime(start, end, "Simulation");
 
-    printf("TimeStep,Susceptible,Exposed,Infectious,Recovered\n");
-    for ( size_t step = 0; step < time_steps; ++step ) {
-        printf("%zd,%d,%d,%d,%d\n",
-            step,
-            output.total_susceptible[step],
-            output.total_exposed[step],
-            output.total_infectious[step],
-            output.total_recovered[step]);
+    std::cout << "TimeStep";
+    for ( size_t location = 0; location < num_locations; ++location)
+    {
+        std::cout << ",S" << location + 1;
+        std::cout << ",E" << location + 1;
+        std::cout << ",I" << location + 1;
+        std::cout << ",R" << location + 1;
+        std::cout << ",P" << location + 1;
+    }
+    std::cout << std::endl;
+    uint32_t s = int(log10(time_steps)) + 1;
+    uint32_t w = int(log10(agent_count)) + 1;
+    for ( size_t step = 0; step < time_steps; ++step )
+    {
+        std::cout << std::setw(s) << step;
+        for ( size_t location = 0; location < num_locations; ++location)
+        {
+            std::cout << ',' << std::setw(w) << (output.susceptible + num_locations * step)[location]
+                      << ',' << std::setw(w) << (output.exposed     + num_locations * step)[location]
+                      << ',' << std::setw(w) << (output.infectious  + num_locations * step)[location]
+                      << ',' << std::setw(w) << (output.recovered   + num_locations * step)[location]
+                      << ',' << std::setw(w) << (output.incidence   + num_locations * step)[location];
+        }
+        std::cout << std::endl;
     }
 }
 
@@ -128,19 +179,6 @@ void AllocatePrngState(uint32_t agent_count, curandState** pPrngState)
 
     auto end = clock();
     PrintElapsedTime(start, end, "AllocatePrngState");
-}
-
-// Allocate time_steps + 1 entries for force_of_infection (each time step
-// updates the force of infection for the next time step).
-void AllocateForceOfInfection(uint32_t time_steps, float** pForce_of_Infection)
-{
-    auto start = clock();
-
-    CheckReturn(cudaMallocManaged(pForce_of_Infection, (time_steps + 1) * sizeof(float)));
-    CheckReturn(cudaMemset(*pForce_of_Infection, 0, (time_steps + 1) * sizeof(float)));
-
-    auto end = clock();
-    PrintElapsedTime(start, end, "AllocateForceOfInfection");
 }
 
 // Allocate and zero enough state for each agent.
@@ -159,7 +197,7 @@ void AllocateStateMemory(uint32_t agent_count, STATE& state)
     CheckReturn(cudaMallocManaged(&state.immunity,            agent_count * sizeof(state.immunity[0])));
     CheckReturn(cudaMallocManaged(&state.infectivity,         agent_count * sizeof(state.infectivity[0])));
 
-    dim3 blockDims(BLOCK_SIZE, 1, 1);
+    dim3 blockDims(THREADS_PER_BLOCK, 1, 1);
     dim3 gridDims((agent_count + blockDims.x - 1) / blockDims.x, 1, 1);
     zero_state<<<gridDims, blockDims>>>(agent_count, state);
     CheckReturn(cudaDeviceSynchronize());
@@ -170,18 +208,21 @@ void AllocateStateMemory(uint32_t agent_count, STATE& state)
 }
 
 // Allocate and zero time steps entries for output.
-void AllocateOutputMemory(uint32_t time_steps, OUTPUT& output)
+void AllocateOutputMemory(uint32_t time_steps, uint32_t locations, OUTPUT& output)
 {
     auto start = clock();
 
-    CheckReturn(cudaMallocManaged(&output.total_susceptible,   time_steps * sizeof(output.total_susceptible[0])));
-    CheckReturn(cudaMallocManaged(&output.total_exposed,       time_steps * sizeof(output.total_exposed[0])));
-    CheckReturn(cudaMallocManaged(&output.total_infectious,    time_steps * sizeof(output.total_infectious[0])));
-    CheckReturn(cudaMallocManaged(&output.total_recovered,     time_steps * sizeof(output.total_recovered[0])));
+    CheckReturn(cudaMallocManaged(&output.population,    time_steps * locations * sizeof(output.population[0])));
+    CheckReturn(cudaMallocManaged(&output.susceptible,   time_steps * locations * sizeof(output.susceptible[0])));
+    CheckReturn(cudaMallocManaged(&output.exposed,       time_steps * locations * sizeof(output.exposed[0])));
+    CheckReturn(cudaMallocManaged(&output.infectious,    time_steps * locations * sizeof(output.infectious[0])));
+    CheckReturn(cudaMallocManaged(&output.recovered,     time_steps * locations * sizeof(output.recovered[0])));
+    CheckReturn(cudaMallocManaged(&output.incidence,     time_steps * locations * sizeof(output.incidence[0])));
+    CheckReturn(cudaMallocManaged(&output.contagion,     time_steps * locations * sizeof(output.contagion[0])));
 
-    dim3 blockDims(BLOCK_SIZE, 1, 1);
+    dim3 blockDims(THREADS_PER_BLOCK, 1, 1);
     dim3 gridDims((time_steps + blockDims.x - 1) / blockDims.x, 1, 1);
-    zero_output<<<gridDims, blockDims>>>(time_steps, output);
+    zero_output<<<gridDims, blockDims>>>(time_steps, locations, output);
     CheckReturn(cudaDeviceSynchronize());
     CheckReturn(cudaGetLastError());
 
@@ -193,7 +234,7 @@ void InitializePrngStates(uint32_t agent_count, curandState* pPrngStates)
 {
     auto start = clock();
 
-    dim3 blockDims(BLOCK_SIZE, 1, 1);
+    dim3 blockDims(THREADS_PER_BLOCK, 1, 1);
     dim3 gridDims((agent_count+blockDims.x-1)/blockDims.x, 1, 1);
 
     initialize_prng<<<gridDims, blockDims>>>(agent_count, pPrngStates);
@@ -208,7 +249,7 @@ void InitializeAges(uint32_t agent_count, STATE& state, curandState* pPrngStates
 {
     auto start = clock();
 
-    dim3 blockDims(BLOCK_SIZE, 1, 1);
+    dim3 blockDims(THREADS_PER_BLOCK, 1, 1);
     dim3 gridDims((agent_count + blockDims.x - 1) / blockDims.x, 1, 1);
     initialize_ages<<<gridDims, blockDims>>>(agent_count, state, pPrngStates);
     CheckReturn(cudaDeviceSynchronize());
@@ -232,13 +273,13 @@ void DisplayAges(uint32_t agent_count, STATE& state)
     std::cout << std::endl;
 }
 
-void InitializeLocations(uint32_t agent_count, uint16_t max_locations, STATE& state, curandState* pPrngStates)
+void InitializeLocations(uint32_t agent_count, uint16_t num_locations, STATE& state, uint32_t *populations, curandState* pPrngStates)
 {
     auto start = clock();
 
-    dim3 blockDims(BLOCK_SIZE, 1, 1);
+    dim3 blockDims(THREADS_PER_BLOCK, 1, 1);
     dim3 gridDims((agent_count + blockDims.x - 1) / blockDims.x, 1, 1);
-    initialize_locations<<<gridDims, blockDims>>>(agent_count, max_locations, state, pPrngStates);
+    initialize_locations<<<gridDims, blockDims>>>(agent_count, num_locations, state, populations, pPrngStates);
     CheckReturn(cudaDeviceSynchronize());
     CheckReturn(cudaGetLastError());
 
@@ -246,6 +287,17 @@ void InitializeLocations(uint32_t agent_count, uint16_t max_locations, STATE& st
 
     auto end = clock();
     PrintElapsedTime(start, end, "InitializeLocations");
+}
+
+void IncrementCurrent(uint32_t locations, OUTPUT& current)
+{
+    current.population  += locations;
+    current.susceptible += locations;
+    current.exposed     += locations;
+    current.infectious  += locations;
+    current.recovered   += locations;
+    current.incidence   += locations;
+    current.contagion   += locations;
 }
 
 void DisplayLocations(uint32_t agent_count, STATE& state)
@@ -267,4 +319,79 @@ void PrintElapsedTime(clock_t start, clock_t end, const char* msg, std::ostream&
         stream << msg << " : ";
     }
     stream << (1000 * uint64_t(end - start) / double(CLOCKS_PER_SEC)) << " milliseconds" << std::endl;
+}
+
+void PopulatePopulation(uint32_t agent_count, uint32_t num_locations, uint32_t* populations)
+{
+    uint32_t remaining_population = agent_count;
+    uint32_t remaining_locations  = num_locations;
+    for (uint32_t i = 0; i < num_locations; ++i)
+    {
+        uint32_t local_pop = remaining_population / remaining_locations;
+        populations[i] = local_pop;
+        remaining_population -= local_pop;
+        --remaining_locations;
+    }
+
+    std::cout << "Local population counts:" << std::endl;
+    for (uint32_t i = 0; i < min(8, num_locations); ++i)
+    {
+        std::cout << i << ": " << populations[i] << std::endl;
+    }
+    std::cout << std::endl;
+}
+
+void InitializeContagion(uint32_t num_locations, uint32_t* populations, float* contagion, float prevalence)
+{
+    for (uint32_t i = 0; i < num_locations; ++i)
+    {
+        contagion[i] = populations[i] * prevalence;
+    }
+
+    std::cout << "Local contagion:" << std::endl;
+    for (uint32_t i = 0; i < min(8, num_locations); ++i)
+    {
+        std::cout << i << ": " << contagion[i] << std::endl;
+    }
+    std::cout << std::endl;
+}
+
+void dumpPopulations(uint32_t num_locations, uint32_t* populations)
+{
+    std::cout << "Local populations:" << std::endl;
+    for ( size_t i = 0; i < num_locations; ++i )
+    {
+        std::cout << populations[i] << ' ';
+    }
+    std::cout << std::endl;
+}
+
+void dumpContagion(uint32_t num_locations, float* contagion)
+{
+    std::cout << "Local contagion:" << std::endl;
+    for ( size_t i = 0; i < num_locations; ++i )
+    {
+        std::cout << contagion[i] << ' ';
+    }
+    std::cout << std::endl;
+}
+
+void dumpOutput(uint32_t time_steps, uint32_t num_locations, OUTPUT& output)
+{
+    std::cout << "Output:" << std::endl;
+    for ( size_t step = 0; step < time_steps; ++step )
+    {
+        std::cout << step << ": ";
+        for ( size_t location = 0; location < num_locations; ++location)
+        {
+            std::cout << "[ " << (output.population  + step * num_locations)[location]
+                      << ", " << (output.susceptible + step * num_locations)[location]
+                      << ", " << (output.exposed     + step * num_locations)[location]
+                      << ", " << (output.infectious  + step * num_locations)[location]
+                      << ", " << (output.recovered   + step * num_locations)[location]
+                      << ", " << (output.incidence   + step * num_locations)[location]
+                      << ", " << (output.contagion   + step * num_locations)[location] << "] ";
+        }
+        std::cout << std::endl;
+    }
 }
