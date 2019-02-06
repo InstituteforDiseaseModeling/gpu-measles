@@ -8,16 +8,14 @@
 __global__ void initialize_prng(uint32_t count, curandState* prngState);
 
 typedef struct {
-    uint8_t* is_infected;
-    uint8_t* elapsed_time;
-    uint8_t* exposure_period;
-    uint8_t* infectious_period;
-    uint8_t* recovery_period;
-    uint16_t* age_in_days;
-    uint16_t* location;
-    uint16_t* spatial_contagion;
-    __half* immunity;
-    __half* infectivity;
+    uint8_t* is_infected;           // Generally 0|1, could track up to eight strains with bits
+    uint8_t* elapsed_time;          // Up to 255 days, could need more for sum of exposure and infectious
+    uint8_t* exposure_duration;     // Up to 255 days
+    uint8_t* infectious_duration;   // Up to 255 days
+    uint16_t* age_in_days;          // Up to 65535 days = 179.5 year
+    uint16_t* location;             // Up to 65535 different locations
+    uint16_t* immunity;             // 0 = susceptible, otherwise count-down "timer"
+    __half* infectivity;            // Could be 0|1, might need floating point later
 } STATE;
 
 typedef struct {

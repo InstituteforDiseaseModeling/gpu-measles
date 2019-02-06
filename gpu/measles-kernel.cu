@@ -16,16 +16,14 @@ __global__ void zero_state(uint32_t count, STATE state)
 
     if ( tidx < count )
     {
-        state.is_infected[tidx]       =    0;
-        state.elapsed_time[tidx]      =    0;
-        state.exposure_period[tidx]   =    0;
-        state.infectious_period[tidx] =    0;
-        state.recovery_period[tidx]   =    0;
-        // state.age_in_days[tidx]       =    0;
-        // state.location[tidx]          =    0;
-        state.spatial_contagion[tidx] = 0xFF;
-        state.immunity[tidx]          =    0;
-        state.infectivity[tidx]       =    0;
+        state.is_infected[tidx]         = 0;
+        state.elapsed_time[tidx]        = 0;
+        state.exposure_duration[tidx]   = 0;
+        state.infectious_duration[tidx] = 0;
+        // state.age_in_days[tidx]         = 0;
+        // state.location[tidx]            = 0;
+        state.immunity[tidx]            = 0;
+        state.infectivity[tidx]         = 0;
     }
 }
 
@@ -69,6 +67,55 @@ __global__ void initialize_locations(uint32_t count, uint16_t max_locations, STA
 
 __device__ uint32_t randrange(curandState* prngState, uint32_t min, uint32_t max);
 
+__device__ inline void SusceptibleToInfected(uint32_t tidx, STATE state, curandState* pPrngState)
+{
+    state.is_infected[tidx]         = uint8_t(true);
+    state.elapsed_time[tidx]        = 0;
+    state.exposure_duration[tidx]   = randrange(pPrngState, 2, 5);
+    state.infectious_duration[tidx] = randrange(pPrngState, 5, 10);
+    state.infectivity[tidx]         = 0.0f;
+    state.immunity[tidx]            = UINT16_MAX;
+}
+
+__device__ inline float UpdateInfected(uint32_t tidx, STATE state, bool& is_infected, bool& is_infectious)
+{
+    // is_infected = true;     // already set or we wouldn't be here
+    // is_infectious = false;  // already set
+
+    uint32_t timer               = ++state.elapsed_time[tidx];
+    uint32_t exposure_duration   =   state.exposure_duration[tidx];
+    uint32_t infectious_duration =   state.infectious_duration[tidx];
+    // 0 <= infectious_timer <= infectious_duration
+    uint32_t infectious_timer    = min(max(timer - exposure_duration, 0), infectious_duration);
+    float infectivity = 0.0f;
+
+    if ( timer >= exposure_duration )
+    {
+        if ( timer <= (exposure_duration + infectious_duration) )
+        {
+            // in infectious period
+            is_infectious = true;
+            infectivity = max(1.0f - pow(2.0f * float(infectious_timer) / infectious_duration - 1, 2), 0.0f);
+            // TBD - infectivity might be zero based on this calculation, should
+            // the individual still be considered infectious?
+        }
+        else
+        {
+            // recovered
+            state.is_infected[tidx] = uint8_t(false);
+            is_infected = false;
+        }
+    }
+    else
+    {
+        // nothing, just progressing through exposure
+    }
+
+    state.infectivity[tidx] = infectivity;
+
+    return infectivity;
+}
+
 __global__ void do_step(
     uint32_t agent_count,
     uint32_t time_step,
@@ -79,67 +126,51 @@ __global__ void do_step(
 {
     int tidx = threadIdx.x + (blockIdx.x * blockDim.x);
 
-    bool is_infected = false;
-    float immunity = 1.0f;  // If initialized to 0.0f, must set to 1.0f in if (!is_infected) else clause
-    float infectivity = 0.0f;
-
     uint32_t susceptible = 0;
     uint32_t exposed     = 0;
     uint32_t infectious  = 0;
     uint32_t recovered   = 0;
 
+    float infectivity = 0.0f;
+
     if ( tidx < agent_count ) {
+
+        bool is_infected   = bool(state.is_infected[tidx]);
+        bool is_immune     = false;
+        bool is_infectious = false;
 
         // (Even) children get older...
         ++state.age_in_days[tidx];
 
-        is_infected = bool(state.is_infected[tidx]);
-        if ( !is_infected ) {
+        if ( !is_infected )
+        {
+            is_immune = bool(state.immunity[tidx]);
 
-            // May need to do this outside the is_infected check if move to MT prng.
-            float draw = curand_uniform(&prngState[tidx]);
-            immunity = float(state.immunity[tidx]);
-            float susceptibility = force_of_infection[time_step] * (1.0f - immunity) / agent_count;
-
-            if ( draw <= susceptibility ) {
-                state.is_infected[tidx]       = uint8_t(true);
-                state.elapsed_time[tidx]      = 0;
-                state.exposure_period[tidx]   = randrange(&prngState[tidx], 2, 5);
-                state.infectious_period[tidx] = randrange(&prngState[tidx], 5, 10);
-                state.infectivity[tidx]       = 0.0f;
-                state.recovery_period[tidx]   = (randrange(&prngState[tidx], 180, 361) - 180);
-                state.immunity[tidx]          = 1.0f;
-                state.spatial_contagion[tidx] = state.location[tidx];
-
-                is_infected = true;
-                immunity = 1.0f;
-            }
-        }
-        else {
-            uint32_t timer = state.elapsed_time[tidx] + 1;
-            state.elapsed_time[tidx] = timer;
-            uint32_t infectious_max = state.infectious_period[tidx];
-            uint32_t infectious_time = min(max(timer - state.exposure_period[tidx], 0), infectious_max);
-            if ( timer <= (state.exposure_period[tidx] + infectious_max) )
+            if ( !is_immune )
             {
-                infectivity = max(1.0f - pow(2.0f * float(infectious_time) / infectious_max - 1, 2), 0.0f);
+                float draw = curand_uniform(&prngState[tidx]);
+                float susceptibility = force_of_infection[time_step] / agent_count;
+
+                if ( draw <= susceptibility )
+                {
+                    SusceptibleToInfected(tidx, state, &prngState[tidx]);
+                    is_infected = true;
+                }
             }
             else
             {
-                state.is_infected[tidx] = uint8_t(false);
-                state.spatial_contagion[tidx] = 0xFFFF;
-                infectivity = 0.0f; // may be unnecessary as infectivity should already be initialized to 0.0f
+                --state.immunity[tidx];
             }
-            state.infectivity[tidx] = infectivity;
+        }
+        else
+        {
+            infectivity = UpdateInfected(tidx, state, is_infected, is_infectious);
         }
 
-        // bool is_infected  = state.is_infected[tidx];
-        // float immunity    = float(state.immunity[tidx]);
-        // float infectivity = float(state.infectivity[tidx]);
-        susceptible = (!is_infected && (immunity    == 0.0f)) ? 1 : 0;
-        exposed     = ( is_infected && (infectivity == 0.0f)) ? 1 : 0;
-        infectious  = ( is_infected && (infectivity  > 0.0f)) ? 1 : 0;
-        recovered   = (!is_infected && (immunity     > 0.0f)) ? 1 : 0;
+        susceptible = (!is_infected && !is_immune)     ? 1 : 0;
+        exposed     = ( is_infected && !is_infectious) ? 1 : 0;
+        infectious  = ( is_infected &&  is_infectious) ? 1 : 0;
+        recovered   = (!is_infected &&  is_immune)     ? 1 : 0;
     }
 
     typedef cub::BlockReduce<float, BLOCK_SIZE> BlockReduceFloat;

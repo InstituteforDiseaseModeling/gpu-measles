@@ -150,16 +150,14 @@ void AllocateStateMemory(uint32_t agent_count, STATE& state)
 
     auto start = clock();
 
-    CheckReturn(cudaMallocManaged(&state.is_infected,       agent_count * sizeof(state.is_infected[0])));
-    CheckReturn(cudaMallocManaged(&state.elapsed_time,      agent_count * sizeof(state.elapsed_time[0])));
-    CheckReturn(cudaMallocManaged(&state.exposure_period,   agent_count * sizeof(state.exposure_period[0])));
-    CheckReturn(cudaMallocManaged(&state.infectious_period, agent_count * sizeof(state.infectious_period[0])));
-    CheckReturn(cudaMallocManaged(&state.recovery_period,   agent_count * sizeof(state.recovery_period[0])));
-    CheckReturn(cudaMallocManaged(&state.age_in_days,       agent_count * sizeof(state.age_in_days[0])));
-    CheckReturn(cudaMallocManaged(&state.location,          agent_count * sizeof(state.location[0])));
-    CheckReturn(cudaMallocManaged(&state.spatial_contagion, agent_count * sizeof(state.spatial_contagion[0])));
-    CheckReturn(cudaMallocManaged(&state.immunity,          agent_count * sizeof(state.immunity[0])));
-    CheckReturn(cudaMallocManaged(&state.infectivity,       agent_count * sizeof(state.infectivity[0])));
+    CheckReturn(cudaMallocManaged(&state.is_infected,         agent_count * sizeof(state.is_infected[0])));
+    CheckReturn(cudaMallocManaged(&state.elapsed_time,        agent_count * sizeof(state.elapsed_time[0])));
+    CheckReturn(cudaMallocManaged(&state.exposure_duration,   agent_count * sizeof(state.exposure_duration[0])));
+    CheckReturn(cudaMallocManaged(&state.infectious_duration, agent_count * sizeof(state.infectious_duration[0])));
+    CheckReturn(cudaMallocManaged(&state.age_in_days,         agent_count * sizeof(state.age_in_days[0])));
+    CheckReturn(cudaMallocManaged(&state.location,            agent_count * sizeof(state.location[0])));
+    CheckReturn(cudaMallocManaged(&state.immunity,            agent_count * sizeof(state.immunity[0])));
+    CheckReturn(cudaMallocManaged(&state.infectivity,         agent_count * sizeof(state.infectivity[0])));
 
     dim3 blockDims(BLOCK_SIZE, 1, 1);
     dim3 gridDims((agent_count + blockDims.x - 1) / blockDims.x, 1, 1);
@@ -167,18 +165,6 @@ void AllocateStateMemory(uint32_t agent_count, STATE& state)
     CheckReturn(cudaDeviceSynchronize());
     CheckReturn(cudaGetLastError());
 
-    /*
-    CheckReturn(cudaMemset(state.is_infected,          0, agent_count * sizeof(state.is_infected[0])));
-    CheckReturn(cudaMemset(state.elapsed_time,         0, agent_count * sizeof(state.elapsed_time[0])));
-    CheckReturn(cudaMemset(state.exposure_period,      0, agent_count * sizeof(state.exposure_period[0])));
-    CheckReturn(cudaMemset(state.infectious_period,    0, agent_count * sizeof(state.infectious_period[0])));
-    CheckReturn(cudaMemset(state.recovery_period,      0, agent_count * sizeof(state.recovery_period[0])));
-    // age_in_days will be initialized elsewhere
-    // location will be initialized elsewhere
-    CheckReturn(cudaMemset(state.spatial_contagion, 0xFF, agent_count * sizeof(state.spatial_contagion[0])));
-    CheckReturn(cudaMemset(state.immunity,             0, agent_count * sizeof(state.immunity[0])));
-    CheckReturn(cudaMemset(state.infectivity,          0, agent_count * sizeof(state.infectivity[0])));
-    */
     auto end = clock();
     PrintElapsedTime(start, end, "AllocateStateMemory");
 }
@@ -198,13 +184,6 @@ void AllocateOutputMemory(uint32_t time_steps, OUTPUT& output)
     zero_output<<<gridDims, blockDims>>>(time_steps, output);
     CheckReturn(cudaDeviceSynchronize());
     CheckReturn(cudaGetLastError());
-
-    /*
-    CheckReturn(cudaMemset(output.total_susceptible,  0, time_steps * sizeof(output.total_susceptible[0])));
-    CheckReturn(cudaMemset(output.total_exposed,      0, time_steps * sizeof(output.total_exposed[0])));
-    CheckReturn(cudaMemset(output.total_infectious,   0, time_steps * sizeof(output.total_infectious[0])));
-    CheckReturn(cudaMemset(output.total_recovered,    0, time_steps * sizeof(output.total_recovered[0])));
-    */
 
     auto end = clock();
     PrintElapsedTime(start, end, "AllocateOutputMemory");
