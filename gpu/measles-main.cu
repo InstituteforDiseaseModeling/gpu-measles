@@ -26,8 +26,8 @@ void AllocateOutputMemory(uint32_t time_steps, uint32_t locations, OUTPUT& outpu
 void InitializePrngStates(uint32_t agent_count, curandState* pPrngStates);
 void InitializeAges(uint32_t agent_count, STATE& state, curandState* pPrngStates);
 
-void PopulatePopulation(uint32_t agent_count, uint32_t num_locations, uint32_t* populations);
-void InitializeContagion(uint32_t num_locations, uint32_t* populations, float* contagion, float initial_prevalence);
+void PopulatePopulation(const std::vector<uint32_t>& cpu_populations, uint32_t* gpu_populations);
+void InitializeContagion(const std::vector<uint32_t>& populations, float* contagion, float initial_prevalence);
 
 void InitializeLocations(uint32_t agent_count, uint32_t num_locations, STATE& state, uint32_t* populations, curandState* pPrngStates);
 void IncrementCurrent(uint32_t locations, OUTPUT& current);
@@ -103,7 +103,7 @@ int main(int argc, const char* argv[])
 
     debug = bool( args.count("debug") );
 
-    std::vector<uint32_t> population = LoadPopulationFromFile( population_file, agent_count, num_locations );
+    std::vector<uint32_t> initial_populations = LoadPopulationFromFile( population_file, agent_count, num_locations );
 
     printf("Running %d agents for %d time steps. Initial prevalence %f.\n",
            agent_count, time_steps, initial_prevalence);
@@ -122,8 +122,8 @@ int main(int argc, const char* argv[])
     InitializePrngStates(agent_count, prngState);
     InitializeAges(agent_count, state, prngState);
 
-    PopulatePopulation(agent_count, num_locations, initial.population);
-    InitializeContagion(num_locations, initial.population, initial.contagion, initial_prevalence);
+    PopulatePopulation(initial_populations, initial.population);
+    InitializeContagion(initial_populations, initial.contagion, initial_prevalence);
 
     InitializeLocations(agent_count, num_locations, state, initial.population, prngState);
 
@@ -363,35 +363,27 @@ void PrintElapsedTime(clock_t start, clock_t end, const char* msg, std::ostream&
     stream << (1000 * uint64_t(end - start) / double(CLOCKS_PER_SEC)) << " milliseconds" << std::endl;
 }
 
-void PopulatePopulation(uint32_t agent_count, uint32_t num_locations, uint32_t* populations)
+void PopulatePopulation(const std::vector<uint32_t>& cpu_populations, uint32_t* gpu_populations)
 {
-    uint32_t remaining_population = agent_count;
-    uint32_t remaining_locations  = num_locations;
-    for (uint32_t i = 0; i < num_locations; ++i)
-    {
-        uint32_t local_pop = remaining_population / remaining_locations;
-        populations[i] = local_pop;
-        remaining_population -= local_pop;
-        --remaining_locations;
-    }
+    CheckReturn(cudaMemcpy(gpu_populations, cpu_populations.data(), cpu_populations.size() * sizeof(uint32_t), cudaMemcpyDefault));
 
     std::cout << "Local population counts:" << std::endl;
-    for (uint32_t i = 0; i < min(8, num_locations); ++i)
+    for (size_t i = 0; i < std::min<size_t>(8, cpu_populations.size()); ++i)
     {
-        std::cout << i << ": " << populations[i] << std::endl;
+        std::cout << i << ": " << gpu_populations[i] << std::endl;
     }
     std::cout << std::endl;
 }
 
-void InitializeContagion(uint32_t num_locations, uint32_t* populations, float* contagion, float prevalence)
+void InitializeContagion(const std::vector<uint32_t>& populations, float* contagion, float prevalence)
 {
-    for (uint32_t i = 0; i < num_locations; ++i)
+    for (uint32_t i = 0; i < populations.size(); ++i)
     {
         contagion[i] = populations[i] * prevalence;
     }
 
     std::cout << "Local contagion:" << std::endl;
-    for (uint32_t i = 0; i < min(8, num_locations); ++i)
+    for (size_t i = 0; i < std::min<size_t>(8, populations.size()); ++i)
     {
         std::cout << i << ": " << contagion[i] << std::endl;
     }
