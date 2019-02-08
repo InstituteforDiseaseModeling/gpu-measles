@@ -11,7 +11,9 @@
 #include <curand_kernel.h>
 #include "check-return.h"
 
-#include "cxxopts.hpp"
+#include "../shared/cxxopts.hpp"
+#define CSV_IO_NO_THREAD
+#include "../shared/csv.h"
 
 #include "measles-init.h"
 #include "measles-kernel.h"
@@ -495,13 +497,14 @@ size_t CheckFileSize( const std::string& filename )
     return file_stats.st_size;
 }
 
-void LoadBinaryPopulationFile( const std::string& filename, uint32_t& agent_count, uint32_t& num_locations, std::vector<uint32_t>& populations )
+void LoadBinaryPopulationFile( const std::string& filename, std::vector<uint32_t>& populations )
 {
-    auto size = CheckFileSize( filename );
+    std::cerr << "Loading binary population file '" << filename.c_str() << "'..." << std::endl;
+    auto file_size = CheckFileSize( filename );
     FILE* file = fopen( filename.c_str(), "rb" );
     if ( file != nullptr )
     {
-        num_locations = size / sizeof(uint32_t);
+        size_t num_locations = file_size / sizeof(uint32_t);
         populations.resize( num_locations );
         std::cerr << "Reading population data for " << num_locations << " nodes..." << std::endl;
         auto count = fread( populations.data(), sizeof(uint32_t), num_locations, file );
@@ -520,6 +523,18 @@ void LoadBinaryPopulationFile( const std::string& filename, uint32_t& agent_coun
     }
 }
 
+void LoadCsvPopulationFile( const std::string& filename, std::vector<uint32_t>& populations )
+{
+    std::cerr << "Loading CSV population file '" << filename.c_str() << "'..." << std::endl;
+    io::CSVReader<1> in(filename);
+    in.read_header(io::ignore_extra_column, "population");
+    uint32_t population;
+    while( in.read_row(population) )
+    {
+        populations.push_back( population );
+    }
+}
+
 std::vector<uint32_t> LoadPopulationFromFile( const std::string& filename, uint32_t& agent_count, uint32_t& num_locations )
 {
     std::vector<uint32_t> populations;
@@ -529,8 +544,7 @@ std::vector<uint32_t> LoadPopulationFromFile( const std::string& filename, uint3
         switch ( fileType )
         {
             case typeCsv:
-                std::cerr << "CSV format for population not yet supported." << std::endl;
-                exit(-1);
+                LoadCsvPopulationFile( filename, populations );
                 break;
 
             case typeJson:
@@ -539,9 +553,10 @@ std::vector<uint32_t> LoadPopulationFromFile( const std::string& filename, uint3
                 break;
 
             default:
-                LoadBinaryPopulationFile( filename, agent_count, num_locations, populations );
+                LoadBinaryPopulationFile( filename, populations );
                 break;
         }
+        num_locations = populations.size();
         agent_count = std::accumulate( populations.begin(), populations.end(), 0 );
     }
     else
