@@ -4,9 +4,9 @@ For each pair of nodes i and j, an amount of infectivity is removed from node_i 
 
 delta_infectivity_i_j = k_val * initial_infectivity_node_i * population_node_i / total_simulation_population / ( distance_between_nodes_i_and_j ** p_val)
 
-$$
-\Delta_{i,j}=(kI_{i}/N)/(d_{i,j})^{p}
-$$
+```latex
+\Delta_{i,j} = (k I_{i} / N) / (d_{i,j})^{p}
+```
 
 The value of delta_infectivity_i_j is the quantity of infectivity removed from node_i and added to node_j. Transfers do not affect the value of initial_infectivity_node_i.
 

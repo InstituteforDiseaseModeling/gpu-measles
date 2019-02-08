@@ -3,6 +3,9 @@
 #include <cstdint>
 #include <climits>
 #include <iomanip>
+#include <numeric>
+
+#include <sys/stat.h>
 
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
@@ -15,6 +18,8 @@
 #include "vax-kernel.h"
 #include "block-size.h"
 
+std::vector<uint32_t> LoadPopulationFromFile( const std::string& filename, uint32_t& agent_count, uint32_t& num_locations );
+
 void AllocatePrngState(uint32_t agent_count, curandState** pPrngState);
 void AllocateStateMemory(uint32_t agent_count, STATE& state);
 void AllocateOutputMemory(uint32_t time_steps, uint32_t locations, OUTPUT& output);
@@ -24,7 +29,7 @@ void InitializeAges(uint32_t agent_count, STATE& state, curandState* pPrngStates
 void PopulatePopulation(uint32_t agent_count, uint32_t num_locations, uint32_t* populations);
 void InitializeContagion(uint32_t num_locations, uint32_t* populations, float* contagion, float initial_prevalence);
 
-void InitializeLocations(uint32_t agent_count, uint16_t num_locations, STATE& state, uint32_t* populations, curandState* pPrngStates);
+void InitializeLocations(uint32_t agent_count, uint32_t num_locations, STATE& state, uint32_t* populations, curandState* pPrngStates);
 void IncrementCurrent(uint32_t locations, OUTPUT& current);
 
 void DisplayAges(uint32_t agent_count, STATE& state);
@@ -43,8 +48,10 @@ int main(int argc, const char* argv[])
     uint32_t agent_count = 1<<20;   // 2^20 = 1024*1024 = 1048576
     uint32_t time_steps = 90;
     float initial_prevalence = 0.01f;
-    uint16_t num_locations = 1;
-//    uint16_t location_stride = 1;
+    uint32_t num_locations = 1;
+//    uint32_t location_stride = 1;
+
+    std::string population_file;
 
     uint32_t vaccination_node = 0;
     int32_t vaccination_time  = -1;
@@ -58,6 +65,7 @@ int main(int argc, const char* argv[])
         ("s,steps",      "Number of time steps ", cxxopts::value<int>()->default_value("90"))
         ("l,locations",  "Number of geographies", cxxopts::value<int>()->default_value("1"))
         ("p,prevalence", "Initial prevalence   ", cxxopts::value<float>()->default_value("0.01"))
+        ("population",   "population file",       cxxopts::value<std::string>())
         ("n,node",       "Vaccination node     ", cxxopts::value<int>()->default_value("0"))
         ("t,time",       "SIA time             ", cxxopts::value<int>()->default_value("-1"))
         ("e,efficacy",   "Vaccine efficacy     ", cxxopts::value<int>()->default_value("730"))
@@ -76,8 +84,10 @@ int main(int argc, const char* argv[])
 
     agent_count        = uint32_t(args["count"].as<int>());
     time_steps         = uint32_t(args["steps"].as<int>());
-    num_locations      = uint16_t(args["locations"].as<int>());
+    num_locations      = uint32_t(args["locations"].as<int>());
     initial_prevalence = args["prevalence"].as<float>();
+
+    population_file    = args["population"].as<std::string>();
 
     vaccination_node   = uint32_t(args["node"].as<int>());
     vaccination_time   = int32_t(args["time"].as<int>());
@@ -92,6 +102,8 @@ int main(int argc, const char* argv[])
 //    }
 
     debug = bool( args.count("debug") );
+
+    std::vector<uint32_t> population = LoadPopulationFromFile( population_file, agent_count, num_locations );
 
     printf("Running %d agents for %d time steps. Initial prevalence %f.\n",
            agent_count, time_steps, initial_prevalence);
@@ -134,13 +146,14 @@ int main(int argc, const char* argv[])
     {
         if ( (vaccination_time >= 0) && (step == vaccination_time) )
         {
-            vaccinate_const<<<gridDims, blockDims>>>(
+            vaccinate_poisson<<<gridDims, blockDims>>>(
                 agent_count,
                 vaccination_node,
                 minimum_age,
                 maximum_age,
                 vaccine_duration,
-                state);
+                state,
+                prngState);
         }
 
         do_step<<<gridDims, blockDims>>>(
@@ -302,7 +315,7 @@ void DisplayAges(uint32_t agent_count, STATE& state)
     std::cout << std::endl;
 }
 
-void InitializeLocations(uint32_t agent_count, uint16_t num_locations, STATE& state, uint32_t *populations, curandState* pPrngStates)
+void InitializeLocations(uint32_t agent_count, uint32_t num_locations, STATE& state, uint32_t *populations, curandState* pPrngStates)
 {
     auto start = clock();
 
@@ -423,4 +436,134 @@ void dumpOutput(uint32_t time_steps, uint32_t num_locations, OUTPUT& output)
         }
         std::cout << std::endl;
     }
+}
+
+enum PopulationFileType {
+    typeBinary = 0,
+    typeCsv    = 1,
+    typeJson   = 2
+};
+
+PopulationFileType DetermineFileType( const std::string& filename )
+{
+    PopulationFileType type = typeBinary;   // default
+
+    auto dot = filename.find_last_of(".");
+
+    if ( dot > 0 )
+    {
+        std::string suffix = filename.substr( dot + 1 );
+        std::transform( suffix.begin(), suffix.end(), suffix.begin(), ::tolower );
+
+        if ( suffix == std::string("csv") )
+        {
+            type = typeCsv;
+        }
+        else if ( suffix == std::string("json") )
+        {
+            type = typeJson;
+        }
+        else
+        {
+            // do nothing, use default, typeBinary
+        }
+    }
+    else
+    {
+        // do nothing, use default, typeBinary
+    }
+
+    return type;
+}
+
+size_t CheckFileSize( const std::string& filename )
+{
+    struct stat file_stats;
+
+    stat( filename.c_str(), &file_stats );
+
+    if ( file_stats.st_size > 0 )
+    {
+        if ( (file_stats.st_size % sizeof(uint32_t)) == 0 )
+        {
+            // all is good, nothing to do
+        }
+        else
+        {
+            std::cerr << "File '" << filename.c_str() << "' is not an even number of uint32 values." << std::endl;
+            exit(-1);
+        }
+    }
+    else
+    {
+        std::cerr << "File '" << filename.c_str() << "' is empty." << std::endl;
+        exit(-1);
+    }
+
+    return file_stats.st_size;
+}
+
+void LoadBinaryPopulationFile( const std::string& filename, uint32_t& agent_count, uint32_t& num_locations, std::vector<uint32_t>& populations )
+{
+    auto size = CheckFileSize( filename );
+    FILE* file = fopen( filename.c_str(), "rb" );
+    if ( file != nullptr )
+    {
+        num_locations = size / sizeof(uint32_t);
+        populations.resize( num_locations );
+        std::cerr << "Reading population data for " << num_locations << " nodes..." << std::endl;
+        auto count = fread( populations.data(), sizeof(uint32_t), num_locations, file );
+        std::cerr << "Read population data for " << count << " nodes." << std::endl;
+        fclose( file );
+        if ( count != num_locations )
+        {
+            std::cerr << "Error reading population data from '" << filename.c_str() << "'." << std::endl;
+            exit(-1);
+        }
+    }
+    else
+    {
+        std::cerr << "Couldn't open " << filename.c_str() << " for reading." << std::endl;
+        exit(-1);
+    }
+}
+
+std::vector<uint32_t> LoadPopulationFromFile( const std::string& filename, uint32_t& agent_count, uint32_t& num_locations )
+{
+    std::vector<uint32_t> populations;
+    if ( filename.length() > 0 )
+    {
+        auto fileType = DetermineFileType( filename );
+        switch ( fileType )
+        {
+            case typeCsv:
+                std::cerr << "CSV format for population not yet supported." << std::endl;
+                exit(-1);
+                break;
+
+            case typeJson:
+                std::cerr << "JSON format for population not yet supported." << std::endl;
+                exit(-1);
+                break;
+
+            default:
+                LoadBinaryPopulationFile( filename, agent_count, num_locations, populations );
+                break;
+        }
+        agent_count = std::accumulate( populations.begin(), populations.end(), 0 );
+    }
+    else
+    {
+        uint32_t remaining_population = agent_count;
+        uint32_t remaining_locations  = num_locations;
+        for (uint32_t i = 0; i < num_locations; ++i)
+        {
+            uint32_t local_pop = remaining_population / remaining_locations;
+            populations.push_back( local_pop );
+            remaining_population -= local_pop;
+            --remaining_locations;
+        }
+    }
+
+    return populations;
 }
