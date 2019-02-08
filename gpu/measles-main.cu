@@ -12,6 +12,7 @@
 
 #include "measles-init.h"
 #include "measles-kernel.h"
+#include "vax-kernel.h"
 #include "block-size.h"
 
 void AllocatePrngState(uint32_t agent_count, curandState** pPrngState);
@@ -45,12 +46,23 @@ int main(int argc, const char* argv[])
     uint16_t num_locations = 1;
 //    uint16_t location_stride = 1;
 
+    uint32_t vaccination_node = 0;
+    int32_t vaccination_time  = -1;
+    uint32_t vaccine_duration = 730;
+    uint32_t minimum_age      = 0;
+    uint32_t maximum_age      = 42000;   //Just over 115 years
+
     cxxopts::Options options(argv[0], "Agent based SEIR model on the GPU with CUDA.");
     options.add_options()
         ("c,count",      "Number of agents     ", cxxopts::value<int>()->default_value("1048576"))
-        ("t,time",       "Number of time steps ", cxxopts::value<int>()->default_value("90"))
+        ("s,steps",      "Number of time steps ", cxxopts::value<int>()->default_value("90"))
         ("l,locations",  "Number of geographies", cxxopts::value<int>()->default_value("1"))
         ("p,prevalence", "Initial prevalence   ", cxxopts::value<float>()->default_value("0.01"))
+        ("n,node",       "Vaccination node     ", cxxopts::value<int>()->default_value("0"))
+        ("t,time",       "SIA time             ", cxxopts::value<int>()->default_value("-1"))
+        ("e,efficacy",   "Vaccine efficacy     ", cxxopts::value<int>()->default_value("730"))
+        ("minimum",      "Minimum age          ", cxxopts::value<int>()->default_value("0"))
+        ("maximum",      "Maximum age          ", cxxopts::value<int>()->default_value("42000"))
         ("d,debug",      "Turn on debug output")
         ("h,help",       "Show help.");
 
@@ -63,9 +75,15 @@ int main(int argc, const char* argv[])
     }
 
     agent_count        = uint32_t(args["count"].as<int>());
-    time_steps         = uint32_t(args["time"].as<int>());
+    time_steps         = uint32_t(args["steps"].as<int>());
     num_locations      = uint16_t(args["locations"].as<int>());
     initial_prevalence = args["prevalence"].as<float>();
+
+    vaccination_node   = uint32_t(args["node"].as<int>());
+    vaccination_time   = int32_t(args["time"].as<int>());
+    vaccine_duration   = uint32_t(args["efficacy"].as<int>());
+    minimum_age        = uint32_t(args["minimum"].as<int>());
+    maximum_age        = uint32_t(args["maximum"].as<int>());
 
 //    if ( num_locations > 1 )
 //    {
@@ -114,6 +132,17 @@ int main(int argc, const char* argv[])
     auto start = clock();
     for ( size_t step = 0; step < time_steps; ++step )
     {
+        if ( (vaccination_time >= 0) && (step == vaccination_time) )
+        {
+            vaccinate_const<<<gridDims, blockDims>>>(
+                agent_count,
+                vaccination_node,
+                minimum_age,
+                maximum_age,
+                vaccine_duration,
+                state);
+        }
+
         do_step<<<gridDims, blockDims>>>(
             agent_count,
             step,
