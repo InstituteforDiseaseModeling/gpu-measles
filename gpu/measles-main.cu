@@ -321,7 +321,7 @@ void InitializeLocations(uint32_t agent_count, uint32_t num_locations, STATE& st
 
     dim3 blockDims(THREADS_PER_BLOCK, 1, 1);
     dim3 gridDims((agent_count + blockDims.x - 1) / blockDims.x, 1, 1);
-    initialize_locations<<<gridDims, blockDims>>>(agent_count, num_locations, state, populations, pPrngStates);
+    initialize_locations<<<gridDims, blockDims>>>( agent_count, num_locations, populations, state );
     CheckReturn(cudaDeviceSynchronize());
     CheckReturn(cudaGetLastError());
 
