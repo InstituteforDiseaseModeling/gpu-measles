@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <stdlib.h>
 #include <stdio.h>
 #include <cstdint>
@@ -21,6 +22,7 @@
 #include "block-size.h"
 
 std::vector<uint32_t> LoadPopulationFromFile( const std::string& filename, uint32_t& agent_count, uint32_t& num_locations );
+std::vector<float>    LoadPrevalenceFromFile( const std::string& filename, uint32_t num_locations, float initial_prevalence );
 
 void AllocatePrngState(uint32_t agent_count, curandState** pPrngState);
 void AllocateStateMemory(uint32_t agent_count, STATE& state);
@@ -28,8 +30,8 @@ void AllocateOutputMemory(uint32_t time_steps, uint32_t locations, OUTPUT& outpu
 void InitializePrngStates(uint32_t agent_count, curandState* pPrngStates);
 void InitializeAges(uint32_t agent_count, STATE& state, curandState* pPrngStates);
 
-void PopulatePopulation(const std::vector<uint32_t>& cpu_populations, uint32_t* gpu_populations);
-void InitializeContagion(const std::vector<uint32_t>& populations, float* contagion, float initial_prevalence);
+void InitializePopulations(const std::vector<uint32_t>& cpu_populations, uint32_t* gpu_populations);
+void InitializeContagion(const std::vector<float>& prevalences, const std::vector<uint32_t>& populations, float* contagion);
 
 void InitializeLocations(uint32_t agent_count, uint32_t num_locations, STATE& state, uint32_t* populations, curandState* pPrngStates);
 void IncrementCurrent(uint32_t locations, OUTPUT& current);
@@ -51,9 +53,6 @@ int main(int argc, const char* argv[])
     uint32_t time_steps = 90;
     float initial_prevalence = 0.01f;
     uint32_t num_locations = 1;
-//    uint32_t location_stride = 1;
-
-    std::string population_file;
 
     uint32_t vaccination_node = 0;
     int32_t vaccination_time  = -1;
@@ -66,8 +65,9 @@ int main(int argc, const char* argv[])
         ("c,count",      "Number of agents     ", cxxopts::value<int>()->default_value("1048576"))
         ("s,steps",      "Number of time steps ", cxxopts::value<int>()->default_value("90"))
         ("l,locations",  "Number of geographies", cxxopts::value<int>()->default_value("1"))
-        ("p,prevalence", "Initial prevalence   ", cxxopts::value<float>()->default_value("0.01"))
+        ("p,prev",       "Initial prevalence   ", cxxopts::value<float>()->default_value("0.01"))
         ("population",   "population file",       cxxopts::value<std::string>())
+        ("prevalence",   "prevalence file",       cxxopts::value<std::string>())
         ("n,node",       "Vaccination node     ", cxxopts::value<int>()->default_value("0"))
         ("t,time",       "SIA time             ", cxxopts::value<int>()->default_value("-1"))
         ("e,efficacy",   "Vaccine efficacy     ", cxxopts::value<int>()->default_value("730"))
@@ -87,9 +87,10 @@ int main(int argc, const char* argv[])
     agent_count        = uint32_t(args["count"].as<int>());
     time_steps         = uint32_t(args["steps"].as<int>());
     num_locations      = uint32_t(args["locations"].as<int>());
-    initial_prevalence = args["prevalence"].as<float>();
+    initial_prevalence = args["prev"].as<float>();
 
-    population_file    = args["population"].as<std::string>();
+    std::string population_file( args["population"].as<std::string>() );
+    std::string prevalence_file( args["prevalence"].as<std::string>() );
 
     vaccination_node   = uint32_t(args["node"].as<int>());
     vaccination_time   = int32_t(args["time"].as<int>());
@@ -97,15 +98,10 @@ int main(int argc, const char* argv[])
     minimum_age        = uint32_t(args["minimum"].as<int>());
     maximum_age        = uint32_t(args["maximum"].as<int>());
 
-//    if ( num_locations > 1 )
-//    {
-//        // round up to next multiple of 32
-//        location_stride = (num_locations + 31) & ~31;
-//    }
-
     debug = bool( args.count("debug") );
 
     std::vector<uint32_t> initial_populations = LoadPopulationFromFile( population_file, agent_count, num_locations );
+    std::vector<float>    initial_prevalences = LoadPrevalenceFromFile( prevalence_file, num_locations, initial_prevalence );
 
     printf("Running %d agents for %d time steps. Initial prevalence %f.\n",
            agent_count, time_steps, initial_prevalence);
@@ -124,8 +120,8 @@ int main(int argc, const char* argv[])
     InitializePrngStates(agent_count, prngState);
     InitializeAges(agent_count, state, prngState);
 
-    PopulatePopulation(initial_populations, initial.population);
-    InitializeContagion(initial_populations, initial.contagion, initial_prevalence);
+    InitializePopulations(initial_populations, initial.population);
+    InitializeContagion(initial_prevalences, initial_populations, initial.contagion);
 
     InitializeLocations(agent_count, num_locations, state, initial.population, prngState);
 
@@ -365,7 +361,7 @@ void PrintElapsedTime(clock_t start, clock_t end, const char* msg, std::ostream&
     stream << (1000 * uint64_t(end - start) / double(CLOCKS_PER_SEC)) << " milliseconds" << std::endl;
 }
 
-void PopulatePopulation(const std::vector<uint32_t>& cpu_populations, uint32_t* gpu_populations)
+void InitializePopulations(const std::vector<uint32_t>& cpu_populations, uint32_t* gpu_populations)
 {
     CheckReturn(cudaMemcpy(gpu_populations, cpu_populations.data(), cpu_populations.size() * sizeof(uint32_t), cudaMemcpyDefault));
 
@@ -377,11 +373,11 @@ void PopulatePopulation(const std::vector<uint32_t>& cpu_populations, uint32_t* 
     std::cout << std::endl;
 }
 
-void InitializeContagion(const std::vector<uint32_t>& populations, float* contagion, float prevalence)
+void InitializeContagion(const std::vector<float>& prevalences, const std::vector<uint32_t>& populations, float* contagion)
 {
     for (uint32_t i = 0; i < populations.size(); ++i)
     {
-        contagion[i] = populations[i] * prevalence;
+        contagion[i] = populations[i] * prevalences[i];
     }
 
     std::cout << "Local contagion:" << std::endl;
@@ -518,7 +514,7 @@ void LoadBinaryPopulationFile( const std::string& filename, std::vector<uint32_t
     }
     else
     {
-        std::cerr << "Couldn't open " << filename.c_str() << " for reading." << std::endl;
+        std::cerr << "Couldn't open " << filename.c_str() << " for reading population data." << std::endl;
         exit(-1);
     }
 }
@@ -573,4 +569,88 @@ std::vector<uint32_t> LoadPopulationFromFile( const std::string& filename, uint3
     }
 
     return populations;
+}
+
+void LoadBinaryPrevalenceFile( const std::string& filename, std::vector<float>& prevalences )
+{
+    std::cerr << "Loading binary prevalence file '" << filename.c_str() << "'..." << std::endl;
+    auto file_size = CheckFileSize( filename );
+    FILE* file = fopen( filename.c_str(), "rb" );
+    if ( file != nullptr )
+    {
+        size_t num_locations = file_size / sizeof(float);
+        prevalences.resize( num_locations );
+        std::cerr << "Reading prevalence data for " << num_locations << " nodes..." << std::endl;
+        auto count = fread( prevalences.data(), sizeof(float), num_locations, file );
+        std::cerr << "Read prevalence data for " << count << " nodes." << std::endl;
+        fclose( file );
+        if ( count != num_locations )
+        {
+            std::cerr << "Error reading prevalence data from '" << filename.c_str() << "'." << std::endl;
+            exit(-1);
+        }
+    }
+    else
+    {
+        std::cerr << "Couldn't open " << filename.c_str() << " for reading prevalence data." << std::endl;
+        exit(-1);
+    }
+}
+
+void LoadCsvPrevalenceFile( const std::string& filename, std::vector<float>& prevalences )
+{
+    std::cerr << "Loading CSV prevalence file '" << filename.c_str() << "'..." << std::endl;
+    io::CSVReader<1> in(filename);
+    in.read_header(io::ignore_extra_column, "prevalence");
+    float prevalence;
+    while( in.read_row(prevalence) )
+    {
+        prevalences.push_back( prevalence );
+    }
+}
+
+std::vector<float> LoadPrevalenceFromFile( const std::string& filename, uint32_t num_locations, float initial_prevalence )
+{
+    std::vector<float> prevalences;
+    if ( filename.length() > 0 )
+    {
+        auto fileType = DetermineFileType( filename );
+        switch ( fileType )
+        {
+            case typeCsv:
+                LoadCsvPrevalenceFile( filename, prevalences );
+                break;
+
+            case typeJson:
+                std::cerr << "JSON format for prevalence not yet supported." << std::endl;
+                exit(-1);
+                break;
+
+            default:
+                LoadBinaryPrevalenceFile( filename, prevalences );
+                break;
+        }
+
+        if ( prevalences.size() != num_locations )
+        {
+            std::cerr << "Number of entries in prevalence file, " << prevalences.size() << ", does not match number of spatial nodes (" << num_locations << ")." << std::endl;
+            exit(-1);
+        }
+
+        auto in_range = [] (float f) -> bool { return ((f < 0.0f) || (f > 1.0f)); };
+        if ( std::count_if( prevalences.begin(), prevalences.end(), in_range ) > 0 )
+        {
+            std::cerr << "Found out-of-range (0 <= prevalence <= 1) value(s) in prevalence file." << std::endl;
+            exit(-1);
+        }
+    }
+    else
+    {
+        for ( size_t location = 0; location < num_locations; ++location )
+        {
+            prevalences.push_back( initial_prevalence );
+        }
+    }
+
+    return prevalences;
 }
