@@ -152,6 +152,9 @@ int main(int argc, const char* argv[])
                 vaccine_duration,
                 state,
                 prngState);
+
+            CheckReturn(cudaDeviceSynchronize());
+            CheckReturn(cudaGetLastError());
         }
 
         do_step<<<gridDims, blockDims>>>(
@@ -166,30 +169,35 @@ int main(int argc, const char* argv[])
         CheckReturn(cudaDeviceSynchronize());
         CheckReturn(cudaGetLastError());
 
+        {
+            // Reduce population to total (1D reduce)
+            dim3 blocks(64, 1, 1);
+            dim3 grids( (num_locations + blocks.x - 1) / blocks.x, 1, 1 );
+            total_population<<<grids, blocks>>>( num_locations, populations, pTotal );
+            // Calculate Δi,j (2D operation)
+            blocks = dim3( 64, 64, 1);
+            grids  = dim3( (num_locations + blocks.x - 1) / blocks.x, (num_locations + blocks.y - 1) / blocks.y, 1);
+            calculate_deltas<<<grids, blocks>>>( num_locations, pTotal, populations, matrix, deltas );
+            // Update Ii += ΣIj,i - ΣIi,j (2D operation?)
+            update_contagion<<<,>>>( num_locations, deltas, contagion );
+        }
+
             // Capture this time step's contagion to use in the next time step
         contagion = current.contagion;
         IncrementCurrent(num_locations, current);
-
-        if ( step == 0 )
-        {
-            DisplayAges(agent_count, state);
-        }
     }
-
-    CheckReturn(cudaDeviceSynchronize());
-    CheckReturn(cudaGetLastError());
 
     auto end = clock();
     PrintElapsedTime(start, end, "Simulation");
 
     std::cout << "TimeStep";
-    for ( size_t location = 0; location < num_locations; ++location)
+    for ( size_t location = 1; location <= num_locations; ++location)
     {
-        std::cout << ",S" << location + 1;
-        std::cout << ",E" << location + 1;
-        std::cout << ",I" << location + 1;
-        std::cout << ",R" << location + 1;
-        std::cout << ",P" << location + 1;
+        std::cout << ",S" << location;
+        std::cout << ",E" << location;
+        std::cout << ",I" << location;
+        std::cout << ",R" << location;
+        std::cout << ",P" << location;
     }
     std::cout << std::endl;
     uint32_t s = int(log10(time_steps)) + 1;

@@ -8,3 +8,5 @@
 *.nvvp
 
 */bin/*
+*/tmp/*
+*/__pycache__/*
