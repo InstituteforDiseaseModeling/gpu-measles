@@ -8,39 +8,6 @@ __global__ void initialize_prng(uint32_t count, curandState* prngState)
     }
 }
 
-__global__ void zero_state(uint32_t count, STATE state)
-{
-    uint32_t tidx = (blockIdx.x * blockDim.x) + threadIdx.x;
-
-    if ( tidx < count )
-    {
-        state.is_infected[tidx]         = 0;
-        state.elapsed_time[tidx]        = 0;
-        state.exposure_duration[tidx]   = 0;
-        state.infectious_duration[tidx] = 0;
-        // state.age_in_days[tidx]         = 0;
-        // state.location[tidx]            = 0;
-        state.immunity[tidx]            = 0;
-        state.infectivity[tidx]         = 0;
-    }
-}
-
-__global__ void zero_output(uint32_t time_steps, uint32_t locations, OUTPUT output)
-{
-    uint32_t tidx = (blockIdx.x * blockDim.x) + threadIdx.x;
-
-    if ( tidx < time_steps )
-    {
-        memset( output.population  + tidx * locations, 0, locations * sizeof(output.population[0]) );
-        memset( output.susceptible + tidx * locations, 0, locations * sizeof(output.susceptible[0]) );
-        memset( output.exposed     + tidx * locations, 0, locations * sizeof(output.exposed[0]) );
-        memset( output.infectious  + tidx * locations, 0, locations * sizeof(output.infectious[0]) );
-        memset( output.recovered   + tidx * locations, 0, locations * sizeof(output.recovered[0]) );
-        memset( output.incidence   + tidx * locations, 0, locations * sizeof(output.incidence[0]) );
-        memset( output.contagion   + tidx * locations, 0, locations * sizeof(output.contagion[0]) );
-    }
-}
-
 #define MEAN_AGE    ( 25 * 365)
 #define MAX_AGE     (100 * 365)
 

@@ -230,7 +230,7 @@ void AllocateStateMemory(uint32_t agent_count, STATE& state)
 
     auto start = clock();
 
-    CheckReturn(cudaMallocManaged(&state.is_infected,         agent_count * sizeof(state.is_infected[0])));
+    CheckReturn(cudaMallocManaged(&state.flags,               agent_count * sizeof(state.flags[0])));
     CheckReturn(cudaMallocManaged(&state.elapsed_time,        agent_count * sizeof(state.elapsed_time[0])));
     CheckReturn(cudaMallocManaged(&state.exposure_duration,   agent_count * sizeof(state.exposure_duration[0])));
     CheckReturn(cudaMallocManaged(&state.infectious_duration, agent_count * sizeof(state.infectious_duration[0])));
@@ -239,9 +239,15 @@ void AllocateStateMemory(uint32_t agent_count, STATE& state)
     CheckReturn(cudaMallocManaged(&state.immunity,            agent_count * sizeof(state.immunity[0])));
     CheckReturn(cudaMallocManaged(&state.infectivity,         agent_count * sizeof(state.infectivity[0])));
 
-    dim3 blockDims(THREADS_PER_BLOCK, 1, 1);
-    dim3 gridDims((agent_count + blockDims.x - 1) / blockDims.x, 1, 1);
-    zero_state<<<gridDims, blockDims>>>(agent_count, state);
+    CheckReturn(cudaMemset(state.flags,               0, agent_count * sizeof(state.flags[0])));
+    CheckReturn(cudaMemset(state.elapsed_time,        0, agent_count * sizeof(state.elapsed_time[0])));
+    CheckReturn(cudaMemset(state.exposure_duration,   0, agent_count * sizeof(state.exposure_duration[0])));
+    CheckReturn(cudaMemset(state.infectious_duration, 0, agent_count * sizeof(state.infectious_duration[0])));
+    CheckReturn(cudaMemset(state.age_in_days,         0, agent_count * sizeof(state.age_in_days[0])));
+    CheckReturn(cudaMemset(state.location,            0, agent_count * sizeof(state.location[0])));
+    CheckReturn(cudaMemset(state.immunity,            0, agent_count * sizeof(state.immunity[0])));
+    CheckReturn(cudaMemset(state.infectivity,         0, agent_count * sizeof(state.infectivity[0])));
+
     CheckReturn(cudaDeviceSynchronize());
     CheckReturn(cudaGetLastError());
 
@@ -262,9 +268,14 @@ void AllocateOutputMemory(uint32_t time_steps, uint32_t locations, OUTPUT& outpu
     CheckReturn(cudaMallocManaged(&output.incidence,     time_steps * locations * sizeof(output.incidence[0])));
     CheckReturn(cudaMallocManaged(&output.contagion,     time_steps * locations * sizeof(output.contagion[0])));
 
-    dim3 blockDims(THREADS_PER_BLOCK, 1, 1);
-    dim3 gridDims((time_steps + blockDims.x - 1) / blockDims.x, 1, 1);
-    zero_output<<<gridDims, blockDims>>>(time_steps, locations, output);
+    CheckReturn(cudaMemset(output.population,    0, time_steps * locations * sizeof(output.population[0])));
+    CheckReturn(cudaMemset(output.susceptible,   0, time_steps * locations * sizeof(output.susceptible[0])));
+    CheckReturn(cudaMemset(output.exposed,       0, time_steps * locations * sizeof(output.exposed[0])));
+    CheckReturn(cudaMemset(output.infectious,    0, time_steps * locations * sizeof(output.infectious[0])));
+    CheckReturn(cudaMemset(output.recovered,     0, time_steps * locations * sizeof(output.recovered[0])));
+    CheckReturn(cudaMemset(output.incidence,     0, time_steps * locations * sizeof(output.incidence[0])));
+    CheckReturn(cudaMemset(output.contagion,     0, time_steps * locations * sizeof(output.contagion[0])));
+
     CheckReturn(cudaDeviceSynchronize());
     CheckReturn(cudaGetLastError());
 
@@ -367,12 +378,15 @@ void InitializePopulations(const std::vector<uint32_t>& cpu_populations, uint32_
 {
     CheckReturn(cudaMemcpy(gpu_populations, cpu_populations.data(), cpu_populations.size() * sizeof(uint32_t), cudaMemcpyDefault));
 
-    std::cout << "Local population counts:" << std::endl;
-    for (size_t i = 0; i < std::min<size_t>(8, cpu_populations.size()); ++i)
+    if ( debug )
     {
-        std::cout << i << ": " << gpu_populations[i] << std::endl;
+        std::cout << "Local population counts:" << std::endl;
+        for (size_t i = 0; i < std::min<size_t>(8, cpu_populations.size()); ++i)
+        {
+            std::cout << i << ": " << gpu_populations[i] << std::endl;
+        }
+        std::cout << std::endl;
     }
-    std::cout << std::endl;
 }
 
 void InitializeContagion(const std::vector<float>& prevalences, const std::vector<uint32_t>& populations, float* contagion)
@@ -382,12 +396,15 @@ void InitializeContagion(const std::vector<float>& prevalences, const std::vecto
         contagion[i] = populations[i] * prevalences[i];
     }
 
-    std::cout << "Local contagion:" << std::endl;
-    for (size_t i = 0; i < std::min<size_t>(8, populations.size()); ++i)
+    if ( debug )
     {
-        std::cout << i << ": " << contagion[i] << std::endl;
+        std::cout << "Local contagion:" << std::endl;
+        for (size_t i = 0; i < std::min<size_t>(8, populations.size()); ++i)
+        {
+            std::cout << i << ": " << contagion[i] << std::endl;
+        }
+        std::cout << std::endl;
     }
-    std::cout << std::endl;
 }
 
 void dumpPopulations(uint32_t num_locations, uint32_t* populations)

@@ -14,7 +14,7 @@ __global__ void vaccinate_const(
     {
         uint32_t location = state.location[ tidx ];
         uint32_t age      = state.age_in_days[ tidx ];
-        bool     infected = bool(state.is_infected[ tidx ]);
+        bool     infected = bool(state.flags[ tidx ] & INFECTED);
 
         if ( (node == location) &&
              ( age >= min_age) && (age < max_age) &&
@@ -40,7 +40,7 @@ __global__ void vaccinate_poisson(
     {
         uint32_t location = state.location[ tidx ];
         uint32_t age      = state.age_in_days[ tidx ];
-        bool     infected = bool(state.is_infected[ tidx ]);
+        bool     infected = bool(state.flags[ tidx ] & INFECTED);
 
         if ( (node == location) &&
              ( age >= min_age) && (age < max_age) &&

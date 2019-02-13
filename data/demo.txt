@@ -1,0 +1,4 @@
+bin/measles --steps 96 --population ../data/01-demo-single.csv -p 0.001
+bin/measles --steps 96 --population ../data/02-demo-multi.csv --prevalence ../data/02-demo-multi.csv --spatial ../data/02-demo-matrix.csv
+bin/measles --steps 96 --population ../data/02-demo-multi.csv --prevalence ../data/02-demo-multi.csv --spatial ../data/02-demo-matrix.csv --node 1 --time 14 --minimum 365 --maximum 2190
+bin/measles --steps 180 --population ../data/nga-populations-2015.bin --prevalence ../data/nga-prevalence.csv --spatial ../data/nga-gravity.bin > nga180.csv

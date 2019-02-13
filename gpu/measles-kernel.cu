@@ -28,7 +28,7 @@ __global__ void do_step(
 
         uint32_t location = state.location[tidx];
 
-        bool is_infected   = bool(state.is_infected[tidx]);
+        bool is_infected   = bool(state.flags[tidx] & INFECTED);
         bool is_immune     = false;
         bool is_infectious = false;
         bool innoculated   = false;
@@ -59,6 +59,7 @@ __global__ void do_step(
         }
         else
         {
+            is_immune = true;
             infectivity = UpdateInfected(tidx, state, is_infected, is_infectious);
         }
 
@@ -78,12 +79,12 @@ __global__ void do_step(
 
 __device__ inline void SusceptibleToInfected(uint32_t tidx, STATE state, curandState* pPrngState)
 {
-    state.is_infected[tidx]         = uint8_t(true);
-    state.elapsed_time[tidx]        = 0;
-    state.exposure_duration[tidx]   = randrange(pPrngState, 2, 5);
-    state.infectious_duration[tidx] = randrange(pPrngState, 5, 10);
-    state.infectivity[tidx]         = 0.0f;
-    state.immunity[tidx]            = UINT16_MAX;
+    state.flags[tidx]               |= INFECTED;
+    state.elapsed_time[tidx]         = 0;
+    state.exposure_duration[tidx]    = randrange(pPrngState, 2, 5);
+    state.infectious_duration[tidx]  = randrange(pPrngState, 5, 10);
+    state.infectivity[tidx]          = 0.0f;
+    state.immunity[tidx]             = UINT16_MAX;
 }
 
 __device__ inline float UpdateInfected(uint32_t tidx, STATE state, bool& is_infected, bool& is_infectious)
@@ -111,7 +112,7 @@ __device__ inline float UpdateInfected(uint32_t tidx, STATE state, bool& is_infe
         else
         {
             // recovered
-            state.is_infected[tidx] = uint8_t(false);
+            state.flags[tidx] &= ~INFECTED;
             is_infected = false;
         }
     }

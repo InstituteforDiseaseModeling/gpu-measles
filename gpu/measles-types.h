@@ -5,8 +5,11 @@
 #include <curand_kernel.h>
 #include <cuda_fp16.h>
 
+#define INFECTED    (0x01)
+#define VACCINATED  (0x02)
+
 typedef struct {
-    uint8_t* is_infected;           // Generally 0|1, could track up to eight strains with bits
+    uint8_t* flags;                 // See #defines above
     uint8_t* elapsed_time;          // Up to 255 days, could need more for sum of exposure and infectious
     uint8_t* exposure_duration;     // Up to 255 days
     uint8_t* infectious_duration;   // Up to 255 days
