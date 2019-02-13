@@ -6,6 +6,8 @@
 #include <cuda_runtime.h>
 #include "check-return.h"
 
+// #define DEBUG_PRINT (true)
+
 SpatialTx::SpatialTx( uint32_t num_locations, float* connectivity )
     : count( num_locations )
     , pTotal( nullptr )
@@ -20,17 +22,22 @@ SpatialTx::SpatialTx( uint32_t num_locations, float* connectivity )
     CheckReturn(cudaMallocManaged(&pOutflow,           count * sizeof(float)));     // vector
     CheckReturn(cudaMallocManaged(&pInflow,            count * sizeof(float)));     // vector
 
+#ifdef DEBUG_PRINT
 {
-    std::cerr << "Connectivity matrix:" << std::endl;
-    for ( size_t j = 0; j < count; ++j )
+    if ( count <= 32 )
     {
-        for ( size_t i = 0; i < count; ++i )
+        std::cerr << "Connectivity matrix:" << std::endl;
+        for ( size_t j = 0; j < count; ++j )
         {
-            std::cerr << connectivity[j * count + i] << ' ';
+            for ( size_t i = 0; i < count; ++i )
+            {
+                std::cerr << connectivity[j * count + i] << ' ';
+            }
+            std::cerr << std::endl;
         }
-        std::cerr << std::endl;
     }
 }
+#endif
 
     CheckReturn( cudaMemcpy( pFactors, connectivity, count * count * sizeof(float), cudaMemcpyDefault ) );
 }
@@ -42,8 +49,6 @@ SpatialTx::~SpatialTx()
     cudaFree( pFactors );  pFactors   = nullptr;
     cudaFree( pTotal );    pTotal     = nullptr;
 }
-
-// #define DEBUG_PRINT (true)
 
 void SpatialTx::DoTransmission( float* pInput, float* pOutput, uint32_t* pPopulations )
 {

@@ -68,9 +68,9 @@ int main(int argc, const char* argv[])
         ("s,steps",      "Number of time steps ", cxxopts::value<int>()->default_value("90"))
         ("l,locations",  "Number of geographies", cxxopts::value<int>()->default_value("1"))
         ("p,prev",       "Initial prevalence   ", cxxopts::value<float>()->default_value("0.01"))
-        ("population",   "Population file      ", cxxopts::value<std::string>())
-        ("prevalence",   "Prevalence file      ", cxxopts::value<std::string>())
-        ("spatial",      "Connectivity file    ", cxxopts::value<std::string>())
+        ("population",   "Population file      ", cxxopts::value<std::string>()->default_value(""))
+        ("prevalence",   "Prevalence file      ", cxxopts::value<std::string>()->default_value(""))
+        ("spatial",      "Connectivity file    ", cxxopts::value<std::string>()->default_value(""))
         ("n,node",       "Vaccination node     ", cxxopts::value<int>()->default_value("0"))
         ("t,time",       "SIA time             ", cxxopts::value<int>()->default_value("-1"))
         ("e,efficacy",   "Vaccine efficacy     ", cxxopts::value<int>()->default_value("730"))
@@ -450,14 +450,17 @@ PopulationFileType DetermineFileType( const std::string& filename )
         if ( suffix == std::string("csv") )
         {
             type = typeCsv;
+            std::cerr << "'" << filename.c_str() << "' looks to be a CSV file." << std::endl << std::flush;
         }
         else if ( suffix == std::string("json") )
         {
             type = typeJson;
+            std::cerr << "'" << filename.c_str() << "' looks to be a JSON file." << std::endl << std::flush;
         }
         else
         {
             // do nothing, use default, typeBinary
+            std::cerr << "'" << filename.c_str() << "' looks to be a binary file." << std::endl << std::flush;
         }
     }
     else
@@ -690,7 +693,7 @@ void LoadBinaryConnectivityFile( const std::string& filename, uint32_t num_locat
         size_t num_elements = file_size / sizeof(float);
         if ( num_elements == (num_locations * num_locations) )
         {
-            connectivity.resize( num_locations );
+            connectivity.resize( num_elements );
             std::cerr << "Reading connectivity data for " << num_locations << " nodes(" << num_elements << " elements)..." << std::endl;
             auto count = fread( connectivity.data(), sizeof(float), num_elements, file );
             std::cerr << "Read connectivity data, " << count << " elements." << std::endl;
