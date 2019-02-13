@@ -18,11 +18,13 @@
 
 #include "measles-init.h"
 #include "measles-kernel.h"
+#include "spatial-tx.h"
 #include "vax-kernel.h"
 #include "block-size.h"
 
 std::vector<uint32_t> LoadPopulationFromFile( const std::string& filename, uint32_t& agent_count, uint32_t& num_locations );
 std::vector<float>    LoadPrevalenceFromFile( const std::string& filename, uint32_t num_locations, float initial_prevalence );
+Transmission*         LoadConnectivityFromFile( const std::string& filename, uint32_t num_locations );
 
 void AllocatePrngState(uint32_t agent_count, curandState** pPrngState);
 void AllocateStateMemory(uint32_t agent_count, STATE& state);
@@ -66,8 +68,9 @@ int main(int argc, const char* argv[])
         ("s,steps",      "Number of time steps ", cxxopts::value<int>()->default_value("90"))
         ("l,locations",  "Number of geographies", cxxopts::value<int>()->default_value("1"))
         ("p,prev",       "Initial prevalence   ", cxxopts::value<float>()->default_value("0.01"))
-        ("population",   "population file",       cxxopts::value<std::string>())
-        ("prevalence",   "prevalence file",       cxxopts::value<std::string>())
+        ("population",   "Population file      ", cxxopts::value<std::string>())
+        ("prevalence",   "Prevalence file      ", cxxopts::value<std::string>())
+        ("spatial",      "Connectivity file    ", cxxopts::value<std::string>())
         ("n,node",       "Vaccination node     ", cxxopts::value<int>()->default_value("0"))
         ("t,time",       "SIA time             ", cxxopts::value<int>()->default_value("-1"))
         ("e,efficacy",   "Vaccine efficacy     ", cxxopts::value<int>()->default_value("730"))
@@ -89,8 +92,9 @@ int main(int argc, const char* argv[])
     num_locations      = uint32_t(args["locations"].as<int>());
     initial_prevalence = args["prev"].as<float>();
 
-    std::string population_file( args["population"].as<std::string>() );
-    std::string prevalence_file( args["prevalence"].as<std::string>() );
+    std::string population_file(   args["population"].as<std::string>() );
+    std::string prevalence_file(   args["prevalence"].as<std::string>() );
+    std::string connectivity_file( args["spatial"].as<std::string>() );
 
     vaccination_node   = uint32_t(args["node"].as<int>());
     vaccination_time   = int32_t(args["time"].as<int>());
@@ -102,6 +106,7 @@ int main(int argc, const char* argv[])
 
     std::vector<uint32_t> initial_populations = LoadPopulationFromFile( population_file, agent_count, num_locations );
     std::vector<float>    initial_prevalences = LoadPrevalenceFromFile( prevalence_file, num_locations, initial_prevalence );
+    Transmission* spatialTransmission = LoadConnectivityFromFile( connectivity_file, num_locations );
 
     printf("Running %d agents for %d time steps. Initial prevalence %f.\n",
            agent_count, time_steps, initial_prevalence);
@@ -169,18 +174,7 @@ int main(int argc, const char* argv[])
         CheckReturn(cudaDeviceSynchronize());
         CheckReturn(cudaGetLastError());
 
-        {
-            // Reduce population to total (1D reduce)
-            dim3 blocks(64, 1, 1);
-            dim3 grids( (num_locations + blocks.x - 1) / blocks.x, 1, 1 );
-            total_population<<<grids, blocks>>>( num_locations, populations, pTotal );
-            // Calculate Δi,j (2D operation)
-            blocks = dim3( 64, 64, 1);
-            grids  = dim3( (num_locations + blocks.x - 1) / blocks.x, (num_locations + blocks.y - 1) / blocks.y, 1);
-            calculate_deltas<<<grids, blocks>>>( num_locations, pTotal, populations, matrix, deltas );
-            // Update Ii += ΣIj,i - ΣIi,j (2D operation?)
-            update_contagion<<<,>>>( num_locations, deltas, contagion );
-        }
+        spatialTransmission->DoTransmission( current.contagion, current.contagion, populations );
 
             // Capture this time step's contagion to use in the next time step
         contagion = current.contagion;
@@ -661,4 +655,94 @@ std::vector<float> LoadPrevalenceFromFile( const std::string& filename, uint32_t
     }
 
     return prevalences;
+}
+
+void LoadCsvConnectivityFile( const std::string& filename, uint32_t num_locations, std::vector<float>& connectivity )
+{
+    std::cerr << "Loading CSV connectivity file '" << filename.c_str() << "'..." << std::endl;
+    io::LineReader in(filename);
+    while( char* line = in.next_line() )
+    {
+        do
+        {
+            connectivity.push_back( float( atof( line ) ) );
+            line = strchr( line, ',' );
+        }
+        while (line++); // Note this checks for line != nullptr but also (post-)increments line to skip the comma.
+    }
+    size_t num_elements = num_locations * num_locations;
+    if ( connectivity.size() != num_elements )
+    {
+        std::cerr << "Connectivity file, '" << filename.c_str() << "', does not have the expected number of elements. "
+                  << "Expected " << num_elements << " but read " << connectivity.size() << '.' << std::endl;
+        exit(-1);
+    }
+}
+
+void LoadBinaryConnectivityFile( const std::string& filename, uint32_t num_locations, std::vector<float>& connectivity )
+{
+    std::cerr << "Loading binary connectivity file '" << filename.c_str() << "'..." << std::endl;
+    // CheckFileSize assumes uint32_t, but will work for float also.
+    auto file_size = CheckFileSize( filename );
+    FILE* file = fopen( filename.c_str(), "rb" );
+    if ( file != nullptr )
+    {
+        size_t num_elements = file_size / sizeof(float);
+        if ( num_elements == (num_locations * num_locations) )
+        {
+            connectivity.resize( num_locations );
+            std::cerr << "Reading connectivity data for " << num_locations << " nodes(" << num_elements << " elements)..." << std::endl;
+            auto count = fread( connectivity.data(), sizeof(float), num_elements, file );
+            std::cerr << "Read connectivity data, " << count << " elements." << std::endl;
+            fclose( file );
+            if ( count != num_elements )
+            {
+                std::cerr << "Error reading connectivity data from '" << filename.c_str() << "'." << std::endl;
+                exit(-1);
+            }
+        }
+        else
+        {
+            std::cerr << "Connectivity file, '" << filename.c_str() << "' does not contain a square matrix." << std::endl;
+            exit(-1);
+        }
+    }
+    else
+    {
+        std::cerr << "Couldn't open " << filename.c_str() << " for reading connectivity data." << std::endl;
+        exit(-1);
+    }
+}
+
+Transmission* LoadConnectivityFromFile( const std::string& filename, uint32_t num_locations )
+{
+    Transmission* tx = nullptr;
+
+    if ( filename.length() > 0 )
+    {
+        std::vector<float> connectivity;
+        auto fileType = DetermineFileType( filename );
+        switch ( fileType )
+        {
+            case typeCsv:
+                LoadCsvConnectivityFile( filename, num_locations, connectivity );
+                break;
+
+            case typeJson:
+                std::cerr << "JSON format for connectivity not yet supported." << std::endl;
+                break;
+
+            default:
+                LoadBinaryConnectivityFile( filename, num_locations, connectivity );
+                break;
+        }
+
+        tx = new SpatialTx( num_locations, connectivity.data() );
+    }
+    else
+    {
+        tx = new DummyTx();
+    }
+
+    return tx;
 }
