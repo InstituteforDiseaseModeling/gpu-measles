@@ -48,3 +48,12 @@ __global__ void initialize_locations(
     }
 }
 
+__global__ void generate_indices( uint32_t count, uint32_t* pIndices, curandState* pPrngStates )
+{
+    uint32_t tidx = (blockIdx.x * blockDim.x) + threadIdx.x;
+
+    if ( tidx < count )
+    {
+        pIndices[ tidx ] = curand( pPrngStates + tidx );
+    }
+}

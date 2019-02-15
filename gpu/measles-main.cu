@@ -10,6 +10,7 @@
 
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
+#include "cub/cub/cub.cuh"
 #include "check-return.h"
 
 #include "../shared/cxxopts.hpp"
@@ -332,14 +333,37 @@ void InitializeLocations(uint32_t agent_count, uint32_t num_locations, STATE& st
 
     dim3 blockDims(THREADS_PER_BLOCK, 1, 1);
     dim3 gridDims((agent_count + blockDims.x - 1) / blockDims.x, 1, 1);
+
     initialize_locations<<<gridDims, blockDims>>>( agent_count, num_locations, populations, state );
     CheckReturn(cudaDeviceSynchronize());
     CheckReturn(cudaGetLastError());
 
-    DisplayLocations(agent_count, state);
+    uint32_t* keys_in  = nullptr;
+    uint32_t* keys_out = nullptr;
+    uint16_t* tmp_locations = nullptr;
+    CheckReturn( cudaMallocManaged( &keys_in,       agent_count * sizeof(keys_in[0]) ) );
+    CheckReturn( cudaMallocManaged( &keys_out,      agent_count * sizeof(keys_out[0]) ) );
+    CheckReturn( cudaMallocManaged( &tmp_locations, agent_count * sizeof(tmp_locations[0]) ) );
+    generate_indices<<<gridDims, blockDims>>>( agent_count, keys_in, pPrngStates );
+    CheckReturn( cudaMemcpy( tmp_locations, state.location, agent_count * sizeof(tmp_locations[0]), cudaMemcpyDeviceToDevice ) );
+
+    void* scratch = nullptr;
+    size_t scratch_bytes;
+    cub::DeviceRadixSort::SortPairs( scratch, scratch_bytes, (uint32_t*)nullptr, (uint32_t*)nullptr, (uint16_t*)nullptr, (uint16_t*)nullptr, agent_count );
+    CheckReturn( cudaMalloc( &scratch, scratch_bytes ) );
+    cub::DeviceRadixSort::SortPairs( scratch, scratch_bytes, keys_in, keys_out, tmp_locations, state.location, agent_count );
+    CheckReturn(cudaDeviceSynchronize());
+    CheckReturn(cudaGetLastError());
+    cudaFree( scratch );
+
+    cudaFree( tmp_locations );
+    cudaFree( keys_out );
+    cudaFree( keys_in );
 
     auto end = clock();
     PrintElapsedTime(start, end, "InitializeLocations");
+
+    DisplayLocations(agent_count, state);
 }
 
 void IncrementCurrent(uint32_t locations, OUTPUT& current)
