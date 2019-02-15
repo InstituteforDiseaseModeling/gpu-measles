@@ -2,7 +2,9 @@
 
 #################################################################################################
 # gencode flags
-SMS ?= 60 61 70 75
+#SMS ?= 60 61 70 75
+#SMS ?= 60 61 70
+SMS ?= 60
 
 # Generate SASS code for each SM architecture listed in (SMS)
 $(foreach sm,$(SMS),$(eval GENCODE_FLAGS += -gencode arch=compute_$(sm),code=sm_$(sm)))
