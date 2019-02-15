@@ -12,4 +12,3 @@ enum  DistributionType : uint32_t {
 
 __global__ void kInitializePrngs(uint32_t count, curandState* pPrngStates);
 __global__ void kInitializeSamples(uint32_t count, float* pSamples, curandState* pPrngStates, DistributionType type, float a, float b);
-__global__ void kCalculateHistogram(int count, float* pSamples, int* pHistogram, int levels, float lower, float upper);

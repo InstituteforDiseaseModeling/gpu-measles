@@ -3,6 +3,7 @@
 
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
+#include "cub/cub/cub.cuh"
 
 #include "../gpu/check-return.h"
 #include "kernel.h"
@@ -40,12 +41,12 @@ void AllocateMemory(uint32_t count, float** ppSamples, curandState** ppPrngState
     CheckReturn(cudaMallocManaged(ppHistogram, NUM_BINS * sizeof(uint32_t)));
 }
 
-#define BLOCK_SIZE  (256)
+#define THREADS_PER_BLOCK  (256)
 
 void InitializePrngs(uint32_t count, curandState* pPrngStates)
 {
-    dim3 blocks(BLOCK_SIZE);
-    dim3 grid((count + BLOCK_SIZE - 1) / BLOCK_SIZE);
+    dim3 blocks(THREADS_PER_BLOCK);
+    dim3 grid((count + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK);
     kInitializePrngs<<<grid, blocks>>>(count, pPrngStates);
     CheckReturn(cudaDeviceSynchronize());
     CheckReturn(cudaGetLastError());
@@ -53,8 +54,8 @@ void InitializePrngs(uint32_t count, curandState* pPrngStates)
 
 void InitializeSamples(uint32_t count, float* pSamples, curandState* pPrngStates)
 {
-    dim3 blocks(BLOCK_SIZE);
-    dim3 grid((count + BLOCK_SIZE - 1) / BLOCK_SIZE);
+    dim3 blocks(THREADS_PER_BLOCK);
+    dim3 grid((count + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK);
     // kInitializeSamples<<<grid, blocks>>>(count, pSamples, pPrngStates, UNIFORM, 0, 32);
     // kInitializeSamples<<<grid, blocks>>>(count, pSamples, pPrngStates, NORMAL, 16, 4);
     // kInitializeSamples<<<grid, blocks>>>(count, pSamples, pPrngStates, POISSON, 8, 0);
@@ -76,11 +77,15 @@ void DisplaySamples(uint32_t count, float* pSamples)
 
 void CalculateHistogram(uint32_t count, float* pSamples, uint32_t* pHistogram)
 {
-    dim3 blocks(1);
-    dim3 grid(1);
-    kCalculateHistogram<<<grid, blocks>>>(count, pSamples, (int*)pHistogram, NUM_BINS, 0.0f, float(NUM_BINS));
-    CheckReturn(cudaDeviceSynchronize());
-    CheckReturn(cudaGetLastError());
+    void*  storage = nullptr;
+    size_t bytes   = 0;
+
+    // storage == nullptr means required bytes will be returned in bytes (passed by reference)
+    cub::DeviceHistogram::HistogramEven( storage, bytes, (float*)nullptr,  (int32_t*)nullptr,    NUM_BINS, 0.0f, float(NUM_BINS), int(count) );
+    printf( "Allocating %zu bytes for histogram of %d items.\n", bytes, count );
+    CheckReturn( cudaMalloc( &storage, bytes ) );
+    cub::DeviceHistogram::HistogramEven( storage, bytes,         pSamples, (int32_t*)pHistogram, NUM_BINS, 0.0f, float(NUM_BINS), int(count) );
+    cudaFree( storage );
 }
 
 void DisplayResults(uint32_t* pHistogram)

@@ -49,16 +49,3 @@ __global__ void kInitializeSamples(uint32_t count, float* pSamples, curandState*
         pSamples[threadId] = sample;
     }
 }
-
-__global__ void kCalculateHistogram(int count, float* pSamples, int* pHistogram, int levels, float lower, float upper)
-{
-    void*  temp_storage = nullptr;
-    size_t bytes = 0;
-
-    // temp_storage == nullptr means required bytes will be returned in bytes (passed by reference)
-    cub::DeviceHistogram::HistogramEven(temp_storage, bytes, pSamples, pHistogram, levels, lower, upper, count);
-    // printf("Allocating %d bytes for histogram.\n", bytes);
-    cudaMalloc(&temp_storage, bytes);
-    cub::DeviceHistogram::HistogramEven(temp_storage, bytes, pSamples, pHistogram, levels, lower, upper, count);
-    cudaFree(temp_storage);
-}
