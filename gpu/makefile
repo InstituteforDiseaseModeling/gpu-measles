@@ -25,14 +25,21 @@ LD_FLAGS=""
 
 #################################################################################################
 # compile options
-CXX_FLAGS=-I/usr/local/include -lineinfo -rdc=true -std=c++11 --maxrregcount=63 --ptxas-options=-v
+CXX_FLAGS=-I/usr/local/include -I../shared -lineinfo -rdc=true -std=c++11 --maxrregcount=63 --ptxas-options=-v
 #################################################################################################
 
-measles: measles-main.cu spatial-tx.cu measles-init.cu measles-kernel.cu spatial-tx-kernel.cu vax-kernel.cu
+measles: measles-main.cu demographics.cu spatial-tx.cu measles-init.cu measles-kernel.cu spatial-tx-kernel.cu vax-kernel.cu
 	nvcc \
 		$(GENCODE_FLAGS) \
 		$(CXX_FLAGS) \
 		-o bin/$@ $^
+
+debug: measles-main.cu demographics.cu spatial-tx.cu measles-init.cu measles-kernel.cu spatial-tx-kernel.cu vax-kernel.cu
+	nvcc \
+		$(GENCODE_FLAGS) \
+		$(CXX_FLAGS) \
+		--debug \
+		-o bin/debug $^
 
 clean:
 	rm -f bin/*

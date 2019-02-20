@@ -8,14 +8,14 @@
 
 #include <sys/stat.h>
 
-#include <cuda_runtime.h>
+#include "cuda.h"
 #include <curand_kernel.h>
 #include "cub/cub/cub.cuh"
-#include "check-return.h"
 
-#include "../shared/cxxopts.hpp"
+#include "cxxopts.hpp"
 #define CSV_IO_NO_THREAD
-#include "../shared/csv.h"
+#include "csv.h"
+#include "demographics.h"
 
 #include "measles-init.h"
 #include "measles-kernel.h"
@@ -159,8 +159,7 @@ int main(int argc, const char* argv[])
                 state,
                 prngState);
 
-            CheckReturn(cudaDeviceSynchronize());
-            CheckReturn(cudaGetLastError());
+            cuda::deviceSynchronize();
         }
 
         do_step<<<gridDims, blockDims>>>(
@@ -172,8 +171,7 @@ int main(int argc, const char* argv[])
             current,
             prngState);
 
-        CheckReturn(cudaDeviceSynchronize());
-        CheckReturn(cudaGetLastError());
+        cuda::deviceSynchronize();
 
         spatialTransmission->DoTransmission( current.contagion, current.contagion, populations );
 
@@ -217,8 +215,7 @@ void AllocatePrngState(uint32_t agent_count, curandState** pPrngState)
 {
     auto start = clock();
 
-    CheckReturn(cudaMallocManaged(pPrngState, agent_count * sizeof(curandState)));
-    // CheckReturn(cudaMemset(*pPrngState, 0, agent_count * sizeof(curandState)));
+    cuda::mallocManaged(pPrngState, agent_count * sizeof(curandState));
 
     auto end = clock();
     PrintElapsedTime(start, end, "AllocatePrngState");
@@ -231,26 +228,25 @@ void AllocateStateMemory(uint32_t agent_count, STATE& state)
 
     auto start = clock();
 
-    CheckReturn(cudaMallocManaged(&state.flags,               agent_count * sizeof(state.flags[0])));
-    CheckReturn(cudaMallocManaged(&state.elapsed_time,        agent_count * sizeof(state.elapsed_time[0])));
-    CheckReturn(cudaMallocManaged(&state.exposure_duration,   agent_count * sizeof(state.exposure_duration[0])));
-    CheckReturn(cudaMallocManaged(&state.infectious_duration, agent_count * sizeof(state.infectious_duration[0])));
-    CheckReturn(cudaMallocManaged(&state.age_in_days,         agent_count * sizeof(state.age_in_days[0])));
-    CheckReturn(cudaMallocManaged(&state.location,            agent_count * sizeof(state.location[0])));
-    CheckReturn(cudaMallocManaged(&state.immunity,            agent_count * sizeof(state.immunity[0])));
-    CheckReturn(cudaMallocManaged(&state.infectivity,         agent_count * sizeof(state.infectivity[0])));
+    cuda::mallocManaged(&state.flags,               agent_count * sizeof(state.flags[0]));
+    cuda::mallocManaged(&state.elapsed_time,        agent_count * sizeof(state.elapsed_time[0]));
+    cuda::mallocManaged(&state.exposure_duration,   agent_count * sizeof(state.exposure_duration[0]));
+    cuda::mallocManaged(&state.infectious_duration, agent_count * sizeof(state.infectious_duration[0]));
+    cuda::mallocManaged(&state.age_in_days,         agent_count * sizeof(state.age_in_days[0]));
+    cuda::mallocManaged(&state.location,            agent_count * sizeof(state.location[0]));
+    cuda::mallocManaged(&state.immunity,            agent_count * sizeof(state.immunity[0]));
+    cuda::mallocManaged(&state.infectivity,         agent_count * sizeof(state.infectivity[0]));
 
-    CheckReturn(cudaMemset(state.flags,               0, agent_count * sizeof(state.flags[0])));
-    CheckReturn(cudaMemset(state.elapsed_time,        0, agent_count * sizeof(state.elapsed_time[0])));
-    CheckReturn(cudaMemset(state.exposure_duration,   0, agent_count * sizeof(state.exposure_duration[0])));
-    CheckReturn(cudaMemset(state.infectious_duration, 0, agent_count * sizeof(state.infectious_duration[0])));
-    CheckReturn(cudaMemset(state.age_in_days,         0, agent_count * sizeof(state.age_in_days[0])));
-    CheckReturn(cudaMemset(state.location,            0, agent_count * sizeof(state.location[0])));
-    CheckReturn(cudaMemset(state.immunity,            0, agent_count * sizeof(state.immunity[0])));
-    CheckReturn(cudaMemset(state.infectivity,         0, agent_count * sizeof(state.infectivity[0])));
+    cuda::memset(state.flags,               0, agent_count * sizeof(state.flags[0]));
+    cuda::memset(state.elapsed_time,        0, agent_count * sizeof(state.elapsed_time[0]));
+    cuda::memset(state.exposure_duration,   0, agent_count * sizeof(state.exposure_duration[0]));
+    cuda::memset(state.infectious_duration, 0, agent_count * sizeof(state.infectious_duration[0]));
+    cuda::memset(state.age_in_days,         0, agent_count * sizeof(state.age_in_days[0]));
+    cuda::memset(state.location,            0, agent_count * sizeof(state.location[0]));
+    cuda::memset(state.immunity,            0, agent_count * sizeof(state.immunity[0]));
+    cuda::memset(state.infectivity,         0, agent_count * sizeof(state.infectivity[0]));
 
-    CheckReturn(cudaDeviceSynchronize());
-    CheckReturn(cudaGetLastError());
+    cuda::deviceSynchronize();
 
     auto end = clock();
     PrintElapsedTime(start, end, "AllocateStateMemory");
@@ -261,24 +257,23 @@ void AllocateOutputMemory(uint32_t time_steps, uint32_t locations, OUTPUT& outpu
 {
     auto start = clock();
 
-    CheckReturn(cudaMallocManaged(&output.population,    time_steps * locations * sizeof(output.population[0])));
-    CheckReturn(cudaMallocManaged(&output.susceptible,   time_steps * locations * sizeof(output.susceptible[0])));
-    CheckReturn(cudaMallocManaged(&output.exposed,       time_steps * locations * sizeof(output.exposed[0])));
-    CheckReturn(cudaMallocManaged(&output.infectious,    time_steps * locations * sizeof(output.infectious[0])));
-    CheckReturn(cudaMallocManaged(&output.recovered,     time_steps * locations * sizeof(output.recovered[0])));
-    CheckReturn(cudaMallocManaged(&output.incidence,     time_steps * locations * sizeof(output.incidence[0])));
-    CheckReturn(cudaMallocManaged(&output.contagion,     time_steps * locations * sizeof(output.contagion[0])));
+    cuda::mallocManaged(&output.population,    time_steps * locations * sizeof(output.population[0]));
+    cuda::mallocManaged(&output.susceptible,   time_steps * locations * sizeof(output.susceptible[0]));
+    cuda::mallocManaged(&output.exposed,       time_steps * locations * sizeof(output.exposed[0]));
+    cuda::mallocManaged(&output.infectious,    time_steps * locations * sizeof(output.infectious[0]));
+    cuda::mallocManaged(&output.recovered,     time_steps * locations * sizeof(output.recovered[0]));
+    cuda::mallocManaged(&output.incidence,     time_steps * locations * sizeof(output.incidence[0]));
+    cuda::mallocManaged(&output.contagion,     time_steps * locations * sizeof(output.contagion[0]));
 
-    CheckReturn(cudaMemset(output.population,    0, time_steps * locations * sizeof(output.population[0])));
-    CheckReturn(cudaMemset(output.susceptible,   0, time_steps * locations * sizeof(output.susceptible[0])));
-    CheckReturn(cudaMemset(output.exposed,       0, time_steps * locations * sizeof(output.exposed[0])));
-    CheckReturn(cudaMemset(output.infectious,    0, time_steps * locations * sizeof(output.infectious[0])));
-    CheckReturn(cudaMemset(output.recovered,     0, time_steps * locations * sizeof(output.recovered[0])));
-    CheckReturn(cudaMemset(output.incidence,     0, time_steps * locations * sizeof(output.incidence[0])));
-    CheckReturn(cudaMemset(output.contagion,     0, time_steps * locations * sizeof(output.contagion[0])));
+    cuda::memset(output.population,    0, time_steps * locations * sizeof(output.population[0]));
+    cuda::memset(output.susceptible,   0, time_steps * locations * sizeof(output.susceptible[0]));
+    cuda::memset(output.exposed,       0, time_steps * locations * sizeof(output.exposed[0]));
+    cuda::memset(output.infectious,    0, time_steps * locations * sizeof(output.infectious[0]));
+    cuda::memset(output.recovered,     0, time_steps * locations * sizeof(output.recovered[0]));
+    cuda::memset(output.incidence,     0, time_steps * locations * sizeof(output.incidence[0]));
+    cuda::memset(output.contagion,     0, time_steps * locations * sizeof(output.contagion[0]));
 
-    CheckReturn(cudaDeviceSynchronize());
-    CheckReturn(cudaGetLastError());
+    cuda::deviceSynchronize();
 
     auto end = clock();
     PrintElapsedTime(start, end, "AllocateOutputMemory");
@@ -292,8 +287,7 @@ void InitializePrngStates(uint32_t agent_count, curandState* pPrngStates)
     dim3 gridDims((agent_count+blockDims.x-1)/blockDims.x, 1, 1);
 
     initialize_prng<<<gridDims, blockDims>>>(agent_count, pPrngStates);
-    CheckReturn(cudaDeviceSynchronize());
-    CheckReturn(cudaGetLastError());
+    cuda::deviceSynchronize();
 
     auto end = clock();
     PrintElapsedTime(start, end, "InitializePrngStates");
@@ -306,8 +300,7 @@ void InitializeAges(uint32_t agent_count, STATE& state, curandState* pPrngStates
     dim3 blockDims(THREADS_PER_BLOCK, 1, 1);
     dim3 gridDims((agent_count + blockDims.x - 1) / blockDims.x, 1, 1);
     initialize_ages<<<gridDims, blockDims>>>(agent_count, state, pPrngStates);
-    CheckReturn(cudaDeviceSynchronize());
-    CheckReturn(cudaGetLastError());
+    cuda::deviceSynchronize();
 
     DisplayAges(agent_count, state);
 
@@ -335,25 +328,23 @@ void InitializeLocations(uint32_t agent_count, uint32_t num_locations, STATE& st
     dim3 gridDims((agent_count + blockDims.x - 1) / blockDims.x, 1, 1);
 
     initialize_locations<<<gridDims, blockDims>>>( agent_count, num_locations, populations, state );
-    CheckReturn(cudaDeviceSynchronize());
-    CheckReturn(cudaGetLastError());
+    cuda::deviceSynchronize();
 
     uint32_t* keys_in  = nullptr;
     uint32_t* keys_out = nullptr;
     uint16_t* tmp_locations = nullptr;
-    CheckReturn( cudaMallocManaged( &keys_in,       agent_count * sizeof(keys_in[0]) ) );
-    CheckReturn( cudaMallocManaged( &keys_out,      agent_count * sizeof(keys_out[0]) ) );
-    CheckReturn( cudaMallocManaged( &tmp_locations, agent_count * sizeof(tmp_locations[0]) ) );
+    cuda::mallocManaged( &keys_in,       agent_count * sizeof(keys_in[0]) );
+    cuda::mallocManaged( &keys_out,      agent_count * sizeof(keys_out[0]) );
+    cuda::mallocManaged( &tmp_locations, agent_count * sizeof(tmp_locations[0]) );
     generate_indices<<<gridDims, blockDims>>>( agent_count, keys_in, pPrngStates );
-    CheckReturn( cudaMemcpy( tmp_locations, state.location, agent_count * sizeof(tmp_locations[0]), cudaMemcpyDeviceToDevice ) );
+    cuda::memcpy( tmp_locations, state.location, agent_count * sizeof(tmp_locations[0]), cudaMemcpyDeviceToDevice );
 
     void* scratch = nullptr;
     size_t scratch_bytes;
     cub::DeviceRadixSort::SortPairs( scratch, scratch_bytes, (uint32_t*)nullptr, (uint32_t*)nullptr, (uint16_t*)nullptr, (uint16_t*)nullptr, agent_count );
-    CheckReturn( cudaMalloc( &scratch, scratch_bytes ) );
+    cuda::malloc( &scratch, scratch_bytes );
     cub::DeviceRadixSort::SortPairs( scratch, scratch_bytes, keys_in, keys_out, tmp_locations, state.location, agent_count );
-    CheckReturn(cudaDeviceSynchronize());
-    CheckReturn(cudaGetLastError());
+    cuda::deviceSynchronize();
     cudaFree( scratch );
 
     cudaFree( tmp_locations );
@@ -400,7 +391,7 @@ void PrintElapsedTime(clock_t start, clock_t end, const char* msg, std::ostream&
 
 void InitializePopulations(const std::vector<uint32_t>& cpu_populations, uint32_t* gpu_populations)
 {
-    CheckReturn(cudaMemcpy(gpu_populations, cpu_populations.data(), cpu_populations.size() * sizeof(uint32_t), cudaMemcpyDefault));
+    cuda::memcpy(gpu_populations, cpu_populations.data(), cpu_populations.size() * sizeof(uint32_t), cudaMemcpyDefault);
 
     if ( debug )
     {
@@ -565,6 +556,61 @@ void LoadBinaryPopulationFile( const std::string& filename, std::vector<uint32_t
     }
 }
 
+void LoadJsonPopulationFile( const std::string& filename, std::vector<uint32_t>& populations )
+{
+    Demographics demographics;
+    demographics.FromFile( filename );
+
+    uint32_t defaultPopulation = 0;
+    if ( demographics.HasMember( "Defaults" ) &&
+         demographics[ "Defaults" ].HasMember( "NodeAttributes" ) &&
+         demographics[ "Defaults" ][ "NodeAttributes" ].HasMember( "InitialPopulation" ) )
+    {
+        defaultPopulation = uint32_t(demographics[ "Defaults" ][ "NodeAttributes" ][ "InitialPopulation" ].GetInt64());
+    }
+
+    if ( demographics.HasMember( "Nodes" ) )
+    {
+        auto& nodes = demographics[ "Nodes" ];
+        if ( nodes.IsArray() )
+        {
+            for ( size_t i = 0; i < nodes.Size(); ++i )
+            {
+                auto& node = nodes[ i ];
+                if ( node.HasMember( "NodeAttributes" ) &&
+                    node[ "NodeAttributes" ].HasMember( "InitialPopulation" ) )
+                {
+                    uint32_t population = uint32_t(node["NodeAttributes"][ "InitialPopulation" ].GetInt64());
+                    if ( population > 0 )
+                    {
+                        populations.push_back( population );
+                    }
+                    else
+                    {
+                        std::cerr << "Initial population of node " << i << " <= 0." << std::endl;
+                        exit(-1);
+                    }
+                }
+                else
+                {
+                    std::cerr << "Using default population " << defaultPopulation << " for node " << i << "." << std::endl;
+                    populations.push_back( defaultPopulation );
+                }
+            }
+        }
+        else
+        {
+            std::cerr << "\"Nodes\" section in demographics files is not an array." << std::endl;
+            exit(-1);
+        }
+    }
+    else
+    {
+        std::cerr << "Demographics files does not contain a \"Nodes\" section." << std::endl;
+        exit(-1);
+    }
+}
+
 void LoadCsvPopulationFile( const std::string& filename, std::vector<uint32_t>& populations )
 {
     std::cerr << "Loading CSV population file '" << filename.c_str() << "'..." << std::endl;
@@ -590,8 +636,7 @@ std::vector<uint32_t> LoadPopulationFromFile( const std::string& filename, uint3
                 break;
 
             case typeJson:
-                std::cerr << "JSON format for population not yet supported." << std::endl;
-                exit(-1);
+                LoadJsonPopulationFile( filename, populations );
                 break;
 
             default:
