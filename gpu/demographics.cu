@@ -12,13 +12,11 @@ Demographics::~Demographics()
 {
 }
 
-// static
 void Demographics::FromString( const std::string& input )
 {
     document.Parse( input );
 }
 
-// static
 void Demographics::FromFile( const std::string& filename )
 {
     // Happy path:

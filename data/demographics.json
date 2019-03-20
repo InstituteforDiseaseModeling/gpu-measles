@@ -11,8 +11,11 @@
       "InitialPopulation":1024,
       "BirthRate":3.484673133016816e-05
     },
-    "IndividualAttributes":{}
-  },
+    "IndividualAttributes":{
+      "PrevalenceDistributionFlag":0,
+      "PrevalenceDistribution1":0.0
+    }
+},
   "Nodes":[
     {
       "Name":"AFRO:NIGERIA:NORTH_CENTRAL:BENUE:ADO",
@@ -2748,6 +2751,11 @@
         "InitialPopulation":581373,
         "Latitude":11.981813,
         "Longitude":8.519022
+      },
+      "IndividualAttributes":{
+        "PrevalenceDistributionFlag":1,
+        "PrevalenceDistribution1":0.01,
+        "PrevalenceDistribution2":0.05
       }
     },
     {

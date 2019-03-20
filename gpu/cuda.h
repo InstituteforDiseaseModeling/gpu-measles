@@ -7,6 +7,7 @@
 namespace cuda
 {
     inline void deviceSynchronize( void ) { CheckReturn(cudaDeviceSynchronize()); CheckReturn(cudaGetLastError()); }
+    inline void free( void* pointer ) { CheckReturn(cudaFree(pointer)); }
     inline void malloc( void* pPointer, size_t size ) { CheckReturn(cudaMalloc( (void**)pPointer, size )); CheckReturn(cudaGetLastError()); }
     inline void mallocManaged( void* pPointer, size_t size ) { CheckReturn(cudaMallocManaged( (void**)pPointer, size )); CheckReturn(cudaGetLastError()); }
     inline void memset( void* pointer, uint32_t value, size_t size ) { CheckReturn(cudaMemset( pointer, value, size )); CheckReturn(cudaGetLastError()); }

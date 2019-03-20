@@ -15,13 +15,18 @@
 #include "cxxopts.hpp"
 #define CSV_IO_NO_THREAD
 #include "csv.h"
+#include "configuration.h"
 #include "demographics.h"
+#include "distributions.h"
 
 #include "measles-init.h"
 #include "measles-kernel.h"
 #include "spatial-tx.h"
+#include "vital-dynamics.h"
 #include "vax-kernel.h"
 #include "block-size.h"
+
+#include "rapidjson/pointer.h"
 
 std::vector<uint32_t> LoadPopulationFromFile( const std::string& filename, uint32_t& agent_count, uint32_t& num_locations );
 std::vector<float>    LoadPrevalenceFromFile( const std::string& filename, uint32_t num_locations, float initial_prevalence );
@@ -65,6 +70,7 @@ int main(int argc, const char* argv[])
 
     cxxopts::Options options(argv[0], "Agent based SEIR model on the GPU with CUDA.");
     options.add_options()
+        ("C,config",     "Configuration file   ", cxxopts::value<std::string>()->default_value(""))
         ("c,count",      "Number of agents     ", cxxopts::value<int>()->default_value("1048576"))
         ("s,steps",      "Number of time steps ", cxxopts::value<int>()->default_value("90"))
         ("l,locations",  "Number of geographies", cxxopts::value<int>()->default_value("1"))
@@ -88,14 +94,35 @@ int main(int argc, const char* argv[])
         exit(0);
     }
 
+    std::string population_file;
+    std::string prevalence_file;
+    std::string connectivity_file;
+
+    std::string config_file( args["config"].as<std::string>() );
+    if ( config_file.length() > 0 )
+    {
+        Configuration config;
+        config.FromFile( config_file );
+        time_steps = Configuration::Simulation_Duration;
+        if ( Configuration::Demographics_Filenames.size() > 0 )
+        {
+            population_file = Configuration::Demographics_Filenames[0];
+            prevalence_file = Configuration::Demographics_Filenames[0];
+        }
+        if ( Configuration::Regional_Migration_Filename.length() > 0 )
+        {
+            connectivity_file = Configuration::Regional_Migration_Filename;
+        }
+    }
+
     agent_count        = uint32_t(args["count"].as<int>());
-    time_steps         = uint32_t(args["steps"].as<int>());
+    if ( args.count( "steps" ) ) time_steps = uint32_t(args["steps"].as<int>());
     num_locations      = uint32_t(args["locations"].as<int>());
     initial_prevalence = args["prev"].as<float>();
 
-    std::string population_file(   args["population"].as<std::string>() );
-    std::string prevalence_file(   args["prevalence"].as<std::string>() );
-    std::string connectivity_file( args["spatial"].as<std::string>() );
+    if ( args.count( "population" ) ) population_file   = args["population"].as<std::string>();
+    if ( args.count( "prevalence" ) ) prevalence_file   = args["prevalence"].as<std::string>();
+    if ( args.count( "spatial"    ) ) connectivity_file = args["spatial"].as<std::string>();
 
     vaccination_node   = uint32_t(args["node"].as<int>());
     vaccination_time   = int32_t(args["time"].as<int>());
@@ -138,6 +165,13 @@ int main(int argc, const char* argv[])
         dumpOutput(4, num_locations, output);
     }
 
+    // crude birthrate: 40/1000/year = 0.04/individual/year  = 0.00010958904109589041/individual/day
+    // crude mortality: 15/1000/year = 0.015/individual/year
+    //                               = 0.985/individual/year survival probability
+    //                               = 0.99995859363039054212/individual/day survival probability
+    //                               = 0.00004140636960945788/individual/day mortality probability
+    VitalDynamics* vitalDynamics = new VitalDynamics( 0.00011f, 0.0000414f, num_locations, prngState, state );
+
     dim3 blockDims(THREADS_PER_BLOCK, 1, 1);
     dim3 gridDims((agent_count+blockDims.x-1)/blockDims.x, 1, 1);
 
@@ -174,8 +208,9 @@ int main(int argc, const char* argv[])
         cuda::deviceSynchronize();
 
         spatialTransmission->DoTransmission( current.contagion, current.contagion, populations );
+        vitalDynamics->Update( populations, 1.0f, current, agent_count );
 
-            // Capture this time step's contagion to use in the next time step
+        // Capture this time step's contagion to use in the next time step
         contagion = current.contagion;
         IncrementCurrent(num_locations, current);
     }
@@ -345,11 +380,11 @@ void InitializeLocations(uint32_t agent_count, uint32_t num_locations, STATE& st
     cuda::malloc( &scratch, scratch_bytes );
     cub::DeviceRadixSort::SortPairs( scratch, scratch_bytes, keys_in, keys_out, tmp_locations, state.location, agent_count );
     cuda::deviceSynchronize();
-    cudaFree( scratch );
+    cuda::free( scratch );
 
-    cudaFree( tmp_locations );
-    cudaFree( keys_out );
-    cudaFree( keys_in );
+    cuda::free( tmp_locations );
+    cuda::free( keys_out );
+    cuda::free( keys_in );
 
     auto end = clock();
     PrintElapsedTime(start, end, "InitializeLocations");
@@ -700,6 +735,110 @@ void LoadCsvPrevalenceFile( const std::string& filename, std::vector<float>& pre
     }
 }
 
+bool KeyExists( const rapidjson::Value& object, const std::string& path )
+{
+    bool exists = (rapidjson::Pointer( path ).Get( object ) != nullptr);
+    return exists;
+}
+
+const rapidjson::Value& GetChild( const rapidjson::Value& object, const std::string& path )
+{
+    const rapidjson::Value& child = (*rapidjson::Pointer( path ).Get( object ));
+    return child;
+}
+
+IDistribution* DistributionForObject( const rapidjson::Value& object, const std::string& element, const std::string& path = "", IDistribution* defaultDistribution = nullptr )
+{
+    IDistribution* distribution = nullptr;
+    std::string fullPath( path + "/" + element + "Flag" );
+    if ( KeyExists( object, fullPath ) )
+    {
+        auto& child = GetChild( object, path );
+        uint32_t type = child[ element + "Flag" ].GetUint();
+        float param1 = 0.0f;
+        float param2 = 0.0f;
+        switch ( type )
+        {
+            case 1: // DISTRIBUTION_UNIFORM
+            case 2: // DISTRIBUTION_GAUSSIAN
+                // Needs both parameters
+                if ( !child.HasMember( element + "2" ) )
+                {
+                    std::cerr << '"' << element.c_str() << "Flag\": " << distribution << " requires " << element.c_str() << "2 value." << std::endl;
+                    exit(-1);
+                }
+                param2 = child[  element + "2" ].GetFloat();
+                // drop through
+
+            case 0: // DISTRIBUTION_CONSTANT
+            case 3: // DISTRIBUTION_EXPONENTIAL
+            case 4: // DISTRIBUTION_POISSON
+                if ( !child.HasMember( element + "1" ) )
+                {
+                    std::cerr << '"' << element.c_str() << "Flag\": " << distribution << " requires " << element.c_str() << "1 value." << std::endl;
+                    exit(-1);
+                }
+                param1 = child[ element + "1" ].GetFloat();
+                distribution = DistributionFactory::Create( DISTRIBUTION_TYPE(type), param1, param2 );
+                break;
+
+            case 5: // DISTRIBUTION_LOGNORMAL
+            case 6: // DISTRIBUTION_BIMODAL
+            case 7: // DISTRIBUTION_WEIBULL
+            default:
+                std::cerr << "Unsupported distribution \"" << path.c_str() << '/' << element.c_str() << "Flag\": " << distribution << std::endl;
+                exit(-1);
+                break;
+        }
+    }
+
+    if ( !distribution )
+    {
+        if ( defaultDistribution )
+        {
+            distribution = defaultDistribution; // Need some reference counting... :(
+        }
+        else
+        {
+            distribution = DistributionFactory::Create( DISTRIBUTION_TYPE::DISTRIBUTION_CONSTANT, 1.0f/128 );   // ~1%
+        }
+    }
+
+    return distribution;
+}
+
+void LoadJsonPrevalenceFile( const std::string& filename, std::vector<float>& prevalences )
+{
+    Demographics demographics;
+    demographics.FromFile( filename );
+
+    IDistribution* defaultPrevalence = DistributionForObject( demographics, "PrevalenceDistribution", "/Defaults/IndividualAttributes" );
+
+    if ( demographics.HasMember( "Nodes" ) )
+    {
+        auto& nodes = demographics[ "Nodes" ];
+        if ( nodes.IsArray() )
+        {
+            for ( size_t i = 0; i < nodes.Size(); ++i )
+            {
+                auto& node = nodes[ i ];
+                auto distribution = DistributionForObject( node, "PrevalenceDistribution", "/IndividualAttributes", defaultPrevalence );
+                prevalences.push_back( distribution->draw() );
+            }
+        }
+        else
+        {
+            std::cerr << "\"Nodes\" section in demographics files is not an array." << std::endl;
+            exit(-1);
+        }
+    }
+    else
+    {
+        std::cerr << "Demographics files does not contain a \"Nodes\" section." << std::endl;
+        exit(-1);
+    }
+}
+
 std::vector<float> LoadPrevalenceFromFile( const std::string& filename, uint32_t num_locations, float initial_prevalence )
 {
     std::vector<float> prevalences;
@@ -713,8 +852,7 @@ std::vector<float> LoadPrevalenceFromFile( const std::string& filename, uint32_t
                 break;
 
             case typeJson:
-                std::cerr << "JSON format for prevalence not yet supported." << std::endl;
-                exit(-1);
+                LoadJsonPrevalenceFile( filename, prevalences );
                 break;
 
             default:

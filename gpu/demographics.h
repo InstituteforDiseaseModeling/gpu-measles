@@ -15,6 +15,7 @@ public:
     bool HasMember( const std::string& key );
 
     rapidjson::Value& operator []( const std::string& key );
+    operator rapidjson::Value&() { return document; }
 
 protected:
 
