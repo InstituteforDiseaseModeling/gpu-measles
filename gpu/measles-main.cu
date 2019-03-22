@@ -57,7 +57,6 @@ bool debug = false;
 
 int main(int argc, const char* argv[])
 {
-    uint32_t agent_count = 1<<20;   // 2^20 = 1024*1024 = 1048576
     uint32_t time_steps = 90;
     float initial_prevalence = 0.01f;
     uint32_t num_locations = 1;
@@ -71,7 +70,6 @@ int main(int argc, const char* argv[])
     cxxopts::Options options(argv[0], "Agent based SEIR model on the GPU with CUDA.");
     options.add_options()
         ("C,config",     "Configuration file   ", cxxopts::value<std::string>()->default_value(""))
-        ("c,count",      "Number of agents     ", cxxopts::value<int>()->default_value("1048576"))
         ("s,steps",      "Number of time steps ", cxxopts::value<int>()->default_value("90"))
         ("l,locations",  "Number of geographies", cxxopts::value<int>()->default_value("1"))
         ("p,prev",       "Initial prevalence   ", cxxopts::value<float>()->default_value("0.01"))
@@ -115,7 +113,6 @@ int main(int argc, const char* argv[])
         }
     }
 
-    agent_count        = uint32_t(args["count"].as<int>());
     if ( args.count( "steps" ) ) time_steps = uint32_t(args["steps"].as<int>());
     num_locations      = uint32_t(args["locations"].as<int>());
     initial_prevalence = args["prev"].as<float>();
@@ -182,6 +179,7 @@ int main(int argc, const char* argv[])
     auto start = clock();
     for ( size_t step = 0; step < time_steps; ++step )
     {
+/*
         if ( (vaccination_time >= 0) && (step == vaccination_time) )
         {
             vaccinate_poisson<<<gridDims, blockDims>>>(
@@ -195,20 +193,11 @@ int main(int argc, const char* argv[])
 
             cuda::deviceSynchronize();
         }
-
-        do_step<<<gridDims, blockDims>>>(
-            agent_count,
-            step,
-            populations,
-            contagion,
-            state,
-            current,
-            prngState);
-
-        cuda::deviceSynchronize();
+*/
+        population.Update( step, populations, contagion, current );
 
         spatialTransmission->DoTransmission( current.contagion, current.contagion, populations );
-        vitalDynamics->Update( populations, 1.0f, current, agent_count );
+        uint32_t new_individuals = vitalDynamics->Update( populations, 1.0f, current, agent_count );
 
         // Capture this time step's contagion to use in the next time step
         contagion = current.contagion;
@@ -245,48 +234,6 @@ int main(int argc, const char* argv[])
     }
 }
 
-// Allocate and zero one instance of curandState for each agent/thread
-void AllocatePrngState(uint32_t agent_count, curandState** pPrngState)
-{
-    auto start = clock();
-
-    cuda::mallocManaged(pPrngState, agent_count * sizeof(curandState));
-
-    auto end = clock();
-    PrintElapsedTime(start, end, "AllocatePrngState");
-}
-
-// Allocate and zero enough state for each agent.
-void AllocateStateMemory(uint32_t agent_count, STATE& state)
-{
-    // Using sizeof(state.field[0]) lets us change the datatypes more easily...
-
-    auto start = clock();
-
-    cuda::mallocManaged(&state.flags,               agent_count * sizeof(state.flags[0]));
-    cuda::mallocManaged(&state.elapsed_time,        agent_count * sizeof(state.elapsed_time[0]));
-    cuda::mallocManaged(&state.exposure_duration,   agent_count * sizeof(state.exposure_duration[0]));
-    cuda::mallocManaged(&state.infectious_duration, agent_count * sizeof(state.infectious_duration[0]));
-    cuda::mallocManaged(&state.age_in_days,         agent_count * sizeof(state.age_in_days[0]));
-    cuda::mallocManaged(&state.location,            agent_count * sizeof(state.location[0]));
-    cuda::mallocManaged(&state.immunity,            agent_count * sizeof(state.immunity[0]));
-    cuda::mallocManaged(&state.infectivity,         agent_count * sizeof(state.infectivity[0]));
-
-    cuda::memset(state.flags,               0, agent_count * sizeof(state.flags[0]));
-    cuda::memset(state.elapsed_time,        0, agent_count * sizeof(state.elapsed_time[0]));
-    cuda::memset(state.exposure_duration,   0, agent_count * sizeof(state.exposure_duration[0]));
-    cuda::memset(state.infectious_duration, 0, agent_count * sizeof(state.infectious_duration[0]));
-    cuda::memset(state.age_in_days,         0, agent_count * sizeof(state.age_in_days[0]));
-    cuda::memset(state.location,            0, agent_count * sizeof(state.location[0]));
-    cuda::memset(state.immunity,            0, agent_count * sizeof(state.immunity[0]));
-    cuda::memset(state.infectivity,         0, agent_count * sizeof(state.infectivity[0]));
-
-    cuda::deviceSynchronize();
-
-    auto end = clock();
-    PrintElapsedTime(start, end, "AllocateStateMemory");
-}
-
 // Allocate and zero time steps entries for output.
 void AllocateOutputMemory(uint32_t time_steps, uint32_t locations, OUTPUT& output)
 {
@@ -314,20 +261,7 @@ void AllocateOutputMemory(uint32_t time_steps, uint32_t locations, OUTPUT& outpu
     PrintElapsedTime(start, end, "AllocateOutputMemory");
 }
 
-void InitializePrngStates(uint32_t agent_count, curandState* pPrngStates)
-{
-    auto start = clock();
-
-    dim3 blockDims(THREADS_PER_BLOCK, 1, 1);
-    dim3 gridDims((agent_count+blockDims.x-1)/blockDims.x, 1, 1);
-
-    initialize_prng<<<gridDims, blockDims>>>(agent_count, pPrngStates);
-    cuda::deviceSynchronize();
-
-    auto end = clock();
-    PrintElapsedTime(start, end, "InitializePrngStates");
-}
-
+/*
 void InitializeAges(uint32_t agent_count, STATE& state, curandState* pPrngStates)
 {
     auto start = clock();
@@ -342,6 +276,7 @@ void InitializeAges(uint32_t agent_count, STATE& state, curandState* pPrngStates
     auto end = clock();
     PrintElapsedTime(start, end, "InitializeAges");
 }
+*/
 
 void DisplayAges(uint32_t agent_count, STATE& state)
 {
@@ -497,47 +432,6 @@ void dumpOutput(uint32_t time_steps, uint32_t num_locations, OUTPUT& output)
     }
 }
 
-enum PopulationFileType {
-    typeBinary = 0,
-    typeCsv    = 1,
-    typeJson   = 2
-};
-
-PopulationFileType DetermineFileType( const std::string& filename )
-{
-    PopulationFileType type = typeBinary;   // default
-
-    auto dot = filename.find_last_of(".");
-
-    if ( dot > 0 )
-    {
-        std::string suffix = filename.substr( dot + 1 );
-        std::transform( suffix.begin(), suffix.end(), suffix.begin(), ::tolower );
-
-        if ( suffix == std::string("csv") )
-        {
-            type = typeCsv;
-            std::cerr << "'" << filename.c_str() << "' looks to be a CSV file." << std::endl << std::flush;
-        }
-        else if ( suffix == std::string("json") )
-        {
-            type = typeJson;
-            std::cerr << "'" << filename.c_str() << "' looks to be a JSON file." << std::endl << std::flush;
-        }
-        else
-        {
-            // do nothing, use default, typeBinary
-            std::cerr << "'" << filename.c_str() << "' looks to be a binary file." << std::endl << std::flush;
-        }
-    }
-    else
-    {
-        // do nothing, use default, typeBinary
-    }
-
-    return type;
-}
-
 size_t CheckFileSize( const std::string& filename )
 {
     struct stat file_stats;
@@ -563,138 +457,6 @@ size_t CheckFileSize( const std::string& filename )
     }
 
     return file_stats.st_size;
-}
-
-void LoadBinaryPopulationFile( const std::string& filename, std::vector<uint32_t>& populations )
-{
-    std::cerr << "Loading binary population file '" << filename.c_str() << "'..." << std::endl;
-    auto file_size = CheckFileSize( filename );
-    FILE* file = fopen( filename.c_str(), "rb" );
-    if ( file != nullptr )
-    {
-        size_t num_locations = file_size / sizeof(uint32_t);
-        populations.resize( num_locations );
-        std::cerr << "Reading population data for " << num_locations << " nodes..." << std::endl;
-        auto count = fread( populations.data(), sizeof(uint32_t), num_locations, file );
-        std::cerr << "Read population data for " << count << " nodes." << std::endl;
-        fclose( file );
-        if ( count != num_locations )
-        {
-            std::cerr << "Error reading population data from '" << filename.c_str() << "'." << std::endl;
-            exit(-1);
-        }
-    }
-    else
-    {
-        std::cerr << "Couldn't open " << filename.c_str() << " for reading population data." << std::endl;
-        exit(-1);
-    }
-}
-
-void LoadJsonPopulationFile( const std::string& filename, std::vector<uint32_t>& populations )
-{
-    Demographics demographics;
-    demographics.FromFile( filename );
-
-    uint32_t defaultPopulation = 0;
-    if ( demographics.HasMember( "Defaults" ) &&
-         demographics[ "Defaults" ].HasMember( "NodeAttributes" ) &&
-         demographics[ "Defaults" ][ "NodeAttributes" ].HasMember( "InitialPopulation" ) )
-    {
-        defaultPopulation = uint32_t(demographics[ "Defaults" ][ "NodeAttributes" ][ "InitialPopulation" ].GetInt64());
-    }
-
-    if ( demographics.HasMember( "Nodes" ) )
-    {
-        auto& nodes = demographics[ "Nodes" ];
-        if ( nodes.IsArray() )
-        {
-            for ( size_t i = 0; i < nodes.Size(); ++i )
-            {
-                auto& node = nodes[ i ];
-                if ( node.HasMember( "NodeAttributes" ) &&
-                    node[ "NodeAttributes" ].HasMember( "InitialPopulation" ) )
-                {
-                    uint32_t population = uint32_t(node["NodeAttributes"][ "InitialPopulation" ].GetInt64());
-                    if ( population > 0 )
-                    {
-                        populations.push_back( population );
-                    }
-                    else
-                    {
-                        std::cerr << "Initial population of node " << i << " <= 0." << std::endl;
-                        exit(-1);
-                    }
-                }
-                else
-                {
-                    std::cerr << "Using default population " << defaultPopulation << " for node " << i << "." << std::endl;
-                    populations.push_back( defaultPopulation );
-                }
-            }
-        }
-        else
-        {
-            std::cerr << "\"Nodes\" section in demographics files is not an array." << std::endl;
-            exit(-1);
-        }
-    }
-    else
-    {
-        std::cerr << "Demographics files does not contain a \"Nodes\" section." << std::endl;
-        exit(-1);
-    }
-}
-
-void LoadCsvPopulationFile( const std::string& filename, std::vector<uint32_t>& populations )
-{
-    std::cerr << "Loading CSV population file '" << filename.c_str() << "'..." << std::endl;
-    io::CSVReader<1> in(filename);
-    in.read_header(io::ignore_extra_column, "population");
-    uint32_t population;
-    while( in.read_row(population) )
-    {
-        populations.push_back( population );
-    }
-}
-
-std::vector<uint32_t> LoadPopulationFromFile( const std::string& filename, uint32_t& agent_count, uint32_t& num_locations )
-{
-    std::vector<uint32_t> populations;
-    if ( filename.length() > 0 )
-    {
-        auto fileType = DetermineFileType( filename );
-        switch ( fileType )
-        {
-            case typeCsv:
-                LoadCsvPopulationFile( filename, populations );
-                break;
-
-            case typeJson:
-                LoadJsonPopulationFile( filename, populations );
-                break;
-
-            default:
-                LoadBinaryPopulationFile( filename, populations );
-                break;
-        }
-        num_locations = populations.size();
-        agent_count = std::accumulate( populations.begin(), populations.end(), 0 );
-    }
-    else
-    {
-        uint32_t remaining_population = agent_count;
-        uint32_t remaining_locations  = num_locations;
-        for (uint32_t i = 0; i < num_locations; ++i)
-        {
-            uint32_t local_pop = remaining_population / remaining_locations;
-            populations.push_back( local_pop );
-            remaining_population -= local_pop;
-            --remaining_locations;
-        }
-    }
-
-    return populations;
 }
 
 void LoadBinaryPrevalenceFile( const std::string& filename, std::vector<float>& prevalences )

@@ -131,12 +131,6 @@ __global__ void new_births( uint32_t count, uint32_t num_locations, int32_t* bir
     }
 }
 
-// shuffle new births (randomizes atomic accesses)
-__global__ void shuffle_agents()
-{
-
-}
-
 __global__ void initialize_newborns( uint32_t count, STATE state, OUTPUT stats, curandState_t* pPrngStates )
 {
     uint32_t tidx = (blockIdx.x * blockDim.x) + threadIdx.x;
