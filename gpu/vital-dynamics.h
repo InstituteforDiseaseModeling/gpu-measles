@@ -1,15 +1,18 @@
 #pragma once
 
-#include "measles-types.h"
+#include <curand_kernel.h>
+
+#include "population.h"
+#include "statistics.h"
 
 class VitalDynamics
 {
 public:
 
-    VitalDynamics( float birth_rate, float mortality, uint32_t num_locations, curandState_t* prngStates, STATE state );
+    VitalDynamics( float birth_rate, float mortality, uint32_t num_locations, curandState_t* prngStates, Population state, Statistics stats );
     ~VitalDynamics();
 
-    uint32_t Update( uint32_t* populations, float dt, OUTPUT stats, uint32_t num_agents );
+    uint32_t Update( uint32_t* populations, float dt, Statistics stats, uint32_t num_agents );
 
 protected:
 
@@ -20,8 +23,8 @@ protected:
 
     // Not owned by this object!
     curandState_t* pPrngStates;
-    STATE   state;
-    OUTPUT  stats;
+    Population  state;
+    Statistics  stats;
 
 private:
 };

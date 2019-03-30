@@ -45,7 +45,7 @@ __global__ void vital_dynamics( uint32_t num_locations, uint32_t* populations, S
 }
 */
 
-__device__ float sigmoid( curandState_t* pPrngState )
+__device__ float sigmoid2( curandState_t* pPrngState )
 {
     float half_max  = 150;  // when 50% of individuals have lost their immunity, sample value for measles
     float steep_fac =  50;  // ~half-life of maternal antibodies, sample value for measles
@@ -68,7 +68,7 @@ __global__ void births_for_time_period( uint32_t* populations, uint32_t num_loca
 }
 
 // Non-disease deaths (all become new infants assuming birthrate > mortality rate)
-__global__ void non_disease_deaths( STATE state, OUTPUT stats, uint32_t count, float probability, int32_t* births, curandState_t* pPrngStates )
+__global__ void non_disease_deaths( Population state, Statistics stats, uint32_t count, float probability, int32_t* births, curandState_t* pPrngStates )
 {
     uint32_t tidx = (blockIdx.x * blockDim.x) + threadIdx.x;
 
@@ -91,7 +91,7 @@ __global__ void non_disease_deaths( STATE state, OUTPUT stats, uint32_t count, f
             float recovered   = float(stats.recovered[ location ]);
             if ( draw < (recovered / (susceptible + recovered)) )
             {
-                state.immunity[ tidx ] = uint32_t( sigmoid( pPrngStates + tidx ) );
+                state.immunity[ tidx ] = uint32_t( sigmoid2( pPrngStates + tidx ) );
             }
             else
             {
@@ -105,7 +105,7 @@ __global__ void non_disease_deaths( STATE state, OUTPUT stats, uint32_t count, f
 }
 
 // Additional births
-__global__ void new_births( uint32_t count, uint32_t num_locations, int32_t* births, STATE state, uint16_t* indices, curandState_t* pPrngStates )
+__global__ void new_births( uint32_t count, uint32_t num_locations, int32_t* births, Population state, uint16_t* indices, curandState_t* pPrngStates )
 {
     uint32_t tidx = (blockIdx.x * blockDim.x) + threadIdx.x;
 
@@ -131,7 +131,7 @@ __global__ void new_births( uint32_t count, uint32_t num_locations, int32_t* bir
     }
 }
 
-__global__ void initialize_newborns( uint32_t count, STATE state, OUTPUT stats, curandState_t* pPrngStates )
+__global__ void initialize_newborns( uint32_t count, Population state, Statistics stats, curandState_t* pPrngStates )
 {
     uint32_t tidx = (blockIdx.x * blockDim.x) + threadIdx.x;
 
@@ -148,7 +148,7 @@ __global__ void initialize_newborns( uint32_t count, STATE state, OUTPUT stats, 
         float recovered   = stats.recovered[ location ];
         if ( draw < (recovered / (susceptible + recovered)) )
         {
-            state.immunity[ tidx ] = uint32_t( sigmoid( pPrngStates + tidx ) );
+            state.immunity[ tidx ] = uint32_t( sigmoid2( pPrngStates + tidx ) );
         }
         else
         {
@@ -160,13 +160,14 @@ __global__ void initialize_newborns( uint32_t count, STATE state, OUTPUT stats, 
 
 /******************************************************************************/
 
-VitalDynamics::VitalDynamics( float birth_rate, float mortality, uint32_t num_locations, curandState_t* prngStates, STATE state )
+VitalDynamics::VitalDynamics( float birth_rate, float mortality, uint32_t num_locations, curandState_t* prngStates, Population state, Statistics stats )
     : birthRate( birth_rate )
     , nonDiseaseMortality( mortality )
     , numLocations( num_locations )
     , births( nullptr )
     , pPrngStates( prngStates )
     , state( state )
+    , stats( stats )
 {
     cuda::mallocManaged( &births, numLocations * sizeof(births[0]) );
 }
@@ -177,22 +178,24 @@ VitalDynamics::~VitalDynamics()
     births = nullptr;
 }
 
-uint32_t VitalDynamics::Update( uint32_t* populations, float dt, OUTPUT stats, uint32_t num_agents )
+uint32_t VitalDynamics::Update( uint32_t* populations, float dt, Statistics stats, uint32_t num_agents )
 {
+    uint32_t new_individuals = 0;
+
     dim3 blocks( THREADS_PER_BLOCK, 1, 1 );
     dim3 grid( (numLocations + blocks.x - 1) / blocks.x, 1, 1 );
 
     births_for_time_period<<<grid, blocks>>>( populations, numLocations, birthRate, dt, births, pPrngStates );
     cuda::deviceSynchronize();
 
+/*
     grid = dim3( (num_agents + blocks.x - 1) / blocks.x, 1, 1 );
     non_disease_deaths<<<grid, blocks>>>( state, stats, num_agents, nonDiseaseMortality, births, pPrngStates );
     cuda::deviceSynchronize();
 
-    uint32_t new_individuals = 0;
     for ( uint32_t iLocation = 0; iLocation < numLocations; ++iLocation )
     {
-        uint32_t count = births[ iLocation ];
+        int32_t count = births[ iLocation ];
         if ( count >= 0 )
         {
             new_individuals += count;
@@ -204,15 +207,7 @@ uint32_t VitalDynamics::Update( uint32_t* populations, float dt, OUTPUT stats, u
     }
 
     grid = dim3( (new_individuals + blocks.x - 1) / blocks.x, 1, 1 );
-    STATE newState = state;
-    newState.flags               += num_agents;
-    newState.elapsed_time        += num_agents;
-    newState.exposure_duration   += num_agents;
-    newState.infectious_duration += num_agents;
-    newState.age_in_days         += num_agents;
-    newState.location            += num_agents;
-    newState.immunity            += num_agents;
-    newState.infectivity         += num_agents;
+    Population newState = state + num_agents;
     new_births<<<grid, blocks>>>( new_individuals, numLocations, births, newState, newState.immunity, pPrngStates );
     cuda::deviceSynchronize();
 
@@ -228,6 +223,7 @@ uint32_t VitalDynamics::Update( uint32_t* populations, float dt, OUTPUT stats, u
 
     initialize_newborns<<<grid, blocks>>>( new_individuals, newState, stats, pPrngStates );
     cuda::deviceSynchronize();
+*/
 
     return new_individuals;
 }

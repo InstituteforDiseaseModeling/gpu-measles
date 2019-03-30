@@ -2,6 +2,10 @@
 ** copyright
 */
 
+#include <algorithm>
+#include <iostream>
+#include <sys/stat.h>
+
 #include "utilities.h"
 
 namespace util
@@ -39,5 +43,41 @@ namespace util
         }
 
         return type;
+    }
+
+    size_t CheckFileSize( const std::string& filename )
+    {
+        struct stat file_stats;
+    
+        stat( filename.c_str(), &file_stats );
+    
+        if ( file_stats.st_size > 0 )
+        {
+            if ( (file_stats.st_size % sizeof(uint32_t)) == 0 )
+            {
+                // all is good, nothing to do
+            }
+            else
+            {
+                std::cerr << "File '" << filename.c_str() << "' is not an even number of uint32 values." << std::endl;
+                exit(-1);
+            }
+        }
+        else
+        {
+            std::cerr << "File '" << filename.c_str() << "' is empty." << std::endl;
+            exit(-1);
+        }
+    
+        return file_stats.st_size;
+    }
+    
+    void PrintElapsedTime(clock_t start, clock_t end, const char* msg, std::ostream& stream)
+    {
+        if ( msg )
+        {
+            stream << msg << " : ";
+        }
+        stream << (1000 * uint64_t(end - start) / double(CLOCKS_PER_SEC)) << " milliseconds" << std::endl;
     }
 }

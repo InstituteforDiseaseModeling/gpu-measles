@@ -11,25 +11,32 @@
 #include "census.h"
 #include "cuda.h"
 #include "demographics.h"
+#include "measles-kernel.h"
 #include "population.h"
 #include "utilities.h"
 
 #include "cub/cub/cub.cuh"
 
-Population::Population( uint32_t capacity )
+Population Population::operator +(size_t offset)
+{
+    Population result( *this );
+    result.flags               += offset;
+    result.elapsed_time        += offset;
+    result.exposure_duration   += offset;
+    result.infectious_duration += offset;
+    result.age_in_days         += offset;
+    result.location            += offset;
+    result.immunity            += offset;
+    result.infectivity         += offset;
+    result.pPrngStates         += offset;
+
+    return result;
+}
+
+PopulationImpl::PopulationImpl( uint32_t capacity, uint32_t prng_seed )
     : capacity( capacity )
-    , size( 0 )
-    , flags( nullptr )
-    , elapsed_time( nullptr )
-    , exposure_duration( nullptr )
-    , infectious_duration( nullptr )
-    , age_in_days( nullptr )
-    , location( nullptr )
-    , immunity( nullptr )
-    , infectivity( nullptr )
-    , pPrngStates( nullptr )
     , numLocales( 0 )
-    , isView( false )
+    , populations( nullptr )
 {
     // Using sizeof(field[0]) lets us change the datatypes more easily...
 
@@ -52,158 +59,54 @@ Population::Population( uint32_t capacity )
     cuda::memset( infectivity,         0, capacity * sizeof(infectivity[0]) );
 
     cuda::mallocManaged( &pPrngStates, capacity * sizeof(curandState) );
+    initializePrngStates( prng_seed );
 
     cuda::deviceSynchronize();
 }
 
-Population::Population( const Population& source )
-    : capacity( source.capacity )
-    , size( source.size )
-    , flags( source.flags )
-    , elapsed_time( source.elapsed_time )
-    , exposure_duration( source.exposure_duration )
-    , infectious_duration( source.infectious_duration )
-    , age_in_days( source.age_in_days )
-    , location( source.location )
-    , immunity( source.immunity )
-    , infectivity( source.infectivity )
-    , pPrngStates( source.pPrngStates )
-    , numLocales( source.numLocales )
-    , isView( true )
+PopulationImpl::~PopulationImpl()
 {
-
+    cuda::free( populations );
+    cuda::free( pPrngStates );
+    cuda::free( infectivity );
+    cuda::free( immunity );
+    cuda::free( location );
+    cuda::free( age_in_days );
+    cuda::free( infectious_duration );
+    cuda::free( exposure_duration );
+    cuda::free( elapsed_time );
+    cuda::free( flags );
 }
 
-Population::~Population()
-{
-    if ( !isView )
-    {
-        cuda::free( pPrngStates );
-        cuda::free( infectivity );
-        cuda::free( immunity );
-        cuda::free( location );
-        cuda::free( age_in_days );
-        cuda::free( infectious_duration );
-        cuda::free( exposure_duration );
-        cuda::free( elapsed_time );
-        cuda::free( flags );
-    }
-}
-
-Population Population::operator +(size_t offset)
-{
-    Population result( *this );
-    result.flags               += offset;
-    result.elapsed_time        += offset;
-    result.exposure_duration   += offset;
-    result.infectious_duration += offset;
-    result.age_in_days         += offset;
-    result.location            += offset;
-    result.immunity            += offset;
-    result.infectivity         += offset;
-    result.pPrngStates         += offset;
-}
-
-
-void Population::LoadFile( const std::string& filename )
-{
-    Census census;
-
-    auto fileType = util::DetermineFileType( filename );
-    switch ( fileType )
-    {
-//        case util::typeCsv:
-//            loadCsvPopulationFile( filename, census );
-//            break;
-
-        case util::typeJson:
-            loadJsonPopulationFile( filename, census );
-            break;
-
-        default:
-//            loadBinaryPopulationFile( filename, census );
-            std::cerr << "Unsupported file type for '" << filename.c_str() << "'." << std::endl;
-            exit( -1 );
-//            break;
-    }
-    num_locales = census.size();
-    size = std::accumulate( census.begin(), census.end(), 0 );
-
-    OUTPUT stats;
-    instantiateNewIndividuals( 0, size, census.data(), stats );
-}
-
-void Population::loadJsonPopulationFile( const std::string& filename, std::vector<uint32_t>& populations )
-{
-    Demographics demographics;
-    demographics.FromFile( filename );
-
-    uint32_t defaultPopulation = 0;
-    if ( demographics.HasMember( "Defaults" ) &&
-         demographics[ "Defaults" ].HasMember( "NodeAttributes" ) &&
-         demographics[ "Defaults" ][ "NodeAttributes" ].HasMember( "InitialPopulation" ) )
-    {
-        defaultPopulation = uint32_t(demographics[ "Defaults" ][ "NodeAttributes" ][ "InitialPopulation" ].GetInt64());
-    }
-
-    if ( demographics.HasMember( "Nodes" ) )
-    {
-        auto& nodes = demographics[ "Nodes" ];
-        if ( nodes.IsArray() )
-        {
-            for ( size_t i = 0; i < nodes.Size(); ++i )
-            {
-                auto& node = nodes[ i ];
-                if ( node.HasMember( "NodeAttributes" ) &&
-                    node[ "NodeAttributes" ].HasMember( "InitialPopulation" ) )
-                {
-                    uint32_t population = uint32_t(node["NodeAttributes"][ "InitialPopulation" ].GetInt64());
-                    if ( population > 0 )
-                    {
-                        populations.push_back( population );
-                    }
-                    else
-                    {
-                        std::cerr << "Initial population of node " << i << " <= 0." << std::endl;
-                        exit(-1);
-                    }
-                }
-                else
-                {
-                    std::cerr << "Using default population " << defaultPopulation << " for node " << i << "." << std::endl;
-                    populations.push_back( defaultPopulation );
-                }
-            }
-        }
-        else
-        {
-            std::cerr << "\"Nodes\" section in demographics files is not an array." << std::endl;
-            exit(-1);
-        }
-    }
-    else
-    {
-        std::cerr << "Demographics files does not contain a \"Nodes\" section." << std::endl;
-        exit(-1);
-    }
-}
-
-__global__ void initialize_prng(uint32_t count, curandState* prngState)
+__global__ void initialize_prng(uint32_t count, uint32_t seed, curandState* prngState)
 {
     uint32_t tidx = threadIdx.x + (blockIdx.x * blockDim.x);
 
     if ( tidx < count ) {
-        curand_init( tidx, 0, 0, &prngState[ tidx ]);
+        // curand_init( tidx, 0, 0, &prngState[ tidx ]);
+        curand_init( seed* tidx, 0, 0, &prngState[ tidx ]);
     }
 }
 
-void Population::initializePrngStates()
+void PopulationImpl::initializePrngStates( uint32_t prng_seed )
 {
     dim3 blocks( THREADS_PER_BLOCK, 1, 1 );
     dim3 grid( (capacity + blocks.x - 1) / blocks.x, 1, 1 );
 
-    initialize_prng<<<grid, blocks>>>( capacity, pPrngStates );
+    initialize_prng<<<grid, blocks>>>( capacity, prng_seed, pPrngStates );
     cuda::deviceSynchronize();
+}
+
+void PopulationImpl::Initialize( const Census& census )
+{
+    numLocales = census.population.size();
+    size = std::accumulate( census.population.begin(), census.population.end(), 0 );
+
+    cuda::mallocManaged( &populations, numLocales * sizeof(populations[0]) );
+    cuda::memcpy( populations, census.population.data(), numLocales * sizeof(populations[0]), cudaMemcpyDefault );
+
+    Statistics stats;
+    instantiateNewIndividuals( 0, size, reinterpret_cast<int32_t*>(populations), stats );
 }
 
 __global__ void new_individuals( uint32_t count, uint32_t num_locations, int32_t* births, Population state, curandState_t* pPrngStates )
@@ -232,35 +135,45 @@ __global__ void new_individuals( uint32_t count, uint32_t num_locations, int32_t
 
 #define MEAN_AGE    ( 25 * 365)
 
-void Population::instantiateNewIndividuals( size_t offset, uint32_t count, int32_t* new_individuals, OUTPUT stats )
+void PopulationImpl::instantiateNewIndividuals( size_t offset, uint32_t count, int32_t* individuals, Statistics stats )
 {
     dim3 blocks( THREADS_PER_BLOCK, 1, 1 );
     dim3 grid( (size + blocks.x - 1) / blocks.x, 1, 1 );
     Population temp = *this + offset;
-    new_individuals<<<grid, blocks>>>( size, num_locales, new_individuals, temp, pPrngStates );
+    new_individuals<<<grid, blocks>>>( size, numLocales, individuals, temp, pPrngStates );
     cuda::deviceSynchronize();
 
-    scramblePopulation( offset );
+    scramblePopulation( offset, count );
     initializeNewIndividuals( 0, size, MEAN_AGE, false, stats );
 }
 
-void Population::scramblePopulation( size_t offset )
+void PopulationImpl::scramblePopulation( size_t offset, uint32_t count )
 {
     void* scratch = nullptr;
     size_t scratch_bytes;
-    cub::DeviceRadixSort::SortPairs( scratch, scratch_bytes, (uint32_t*)nullptr, (uint32_t*)nullptr, (uint16_t*)nullptr, (uint16_t*)nullptr, new_individuals );
+    cub::DeviceRadixSort::SortPairs( scratch, scratch_bytes, (uint32_t*)nullptr, (uint32_t*)nullptr, (uint16_t*)nullptr, (uint16_t*)nullptr, count );
     cuda::malloc( &scratch, scratch_bytes );
     Population temp = *this + offset;
     // Keys (random draws) are in immunity, use infectivity for output.
     // Locations are, initially, in age_in_days, store into "location".
-    cub::DeviceRadixSort::SortPairs( scratch, scratch_bytes, temp.immunity, (uint16_t*)temp.infectivity, temp.age_in_days, temp.location, new_individuals );
+    cub::DeviceRadixSort::SortPairs( scratch, scratch_bytes, temp.immunity, (uint16_t*)temp.infectivity, temp.age_in_days, temp.location, count );
     cuda::deviceSynchronize();
     cuda::free( scratch );
 }
 
 #define MAX_AGE     (100 * 365)
 
-__global__ void initialize_newborns( uint32_t count, STATE state, uint16_t mean_age, bool initial_immunity, OUTPUT stats, curandState_t* pPrngStates )
+__device__ float sigmoid( curandState_t* pPrngState )
+{
+    float half_max  = 150;  // when 50% of individuals have lost their immunity, sample value for measles
+    float steep_fac =  50;  // ~half-life of maternal antibodies, sample value for measles
+    float sus_init  =   0;  // fraction of population susceptible at age = -∞, sample value for measles
+    float draw = curand_uniform( pPrngState );
+    float duration = half_max - steep_fac * log((1 - sus_init) / (draw - sus_init) - 1 + 0.001);
+    return max(duration, 0.0f); // clamp return value to 0
+}
+
+__global__ void initialize_newborns( uint32_t count, Population state, uint16_t mean_age, bool initial_immunity, Statistics stats, curandState_t* pPrngStates )
 {
     uint32_t tidx = (blockIdx.x * blockDim.x) + threadIdx.x;
 
@@ -295,22 +208,23 @@ __global__ void initialize_newborns( uint32_t count, STATE state, uint16_t mean_
     }
 }
 
-void Population::initializeNewIndividuals( size_t offset, uint32_t count, uint16_t mean_age, bool initial_immunity, OUTPUT stats )
+void PopulationImpl::initializeNewIndividuals( size_t offset, uint32_t count, uint16_t mean_age, bool initial_immunity, Statistics stats )
 {
     dim3 blocks( THREADS_PER_BLOCK, 1, 1 );
     dim3 grid( (count + blocks.x - 1) / blocks.x, 1, 1 );
     Population temp = *this + offset;
-    initialize_newborns<<<grid, blocks>>>( count, mean_age, initial_immunity, temp, stats, pPrngStates );
+    Statistics empty;
+    initialize_newborns<<<grid, blocks>>>( count, temp, mean_age, initial_immunity, empty, pPrngStates );
     cuda::deviceSynchronize();
 }
 
-void Population::Update( size_t time_step, uint32_t* populations, float* contagion, OUTPUT current )
+void PopulationImpl::Update( size_t time_step, uint32_t* populations, float* contagion, Statistics current )
 {
     dim3 blocks( THREADS_PER_BLOCK, 1, 1 );
-    dim3 grids( (size + blocks.x - 1) / blocks.x, 1, 1 );
+    dim3 grid( (size + blocks.x - 1) / blocks.x, 1, 1 );
     do_step<<<grid, blocks>>>(
         size,
-        step,
+        time_step,
         populations,
         contagion,
         *this,
@@ -321,41 +235,27 @@ void Population::Update( size_t time_step, uint32_t* populations, float* contagi
 }
 
 /*
-void LoadBinaryPopulationFile( const std::string& filename, std::vector<uint32_t>& populations )
+void DisplayAges(uint32_t agent_count, Population& state)
 {
-    std::cerr << "Loading binary population file '" << filename.c_str() << "'..." << std::endl;
-    auto file_size = CheckFileSize( filename );
-    FILE* file = fopen( filename.c_str(), "rb" );
-    if ( file != nullptr )
+    if ( !debug) return;
+
+    std::cout << "Age (in days):" << std::endl;
+    for (uint32_t i = 0; i < min(32, agent_count); ++i)
     {
-        size_t num_locations = file_size / sizeof(uint32_t);
-        populations.resize( num_locations );
-        std::cerr << "Reading population data for " << num_locations << " nodes..." << std::endl;
-        auto count = fread( populations.data(), sizeof(uint32_t), num_locations, file );
-        std::cerr << "Read population data for " << count << " nodes." << std::endl;
-        fclose( file );
-        if ( count != num_locations )
-        {
-            std::cerr << "Error reading population data from '" << filename.c_str() << "'." << std::endl;
-            exit(-1);
-        }
+        std::cout << std::setw(2) << i << ": " << state.age_in_days[i] << std::endl;
     }
-    else
-    {
-        std::cerr << "Couldn't open " << filename.c_str() << " for reading population data." << std::endl;
-        exit(-1);
-    }
+    std::cout << std::endl;
 }
 
-void LoadCsvPopulationFile( const std::string& filename, std::vector<uint32_t>& populations )
+void DisplayLocations(uint32_t agent_count, Population& state)
 {
-    std::cerr << "Loading CSV population file '" << filename.c_str() << "'..." << std::endl;
-    io::CSVReader<1> in(filename);
-    in.read_header(io::ignore_extra_column, "population");
-    uint32_t population;
-    while( in.read_row(population) )
+    if ( !debug ) return;
+
+    std::cout << "Location (ID):" << std::endl;
+    for (uint32_t i = 0; i < min(32, agent_count); ++i)
     {
-        populations.push_back( population );
+        std::cout << std::setw(2) << i << ": " << state.location[i] << std::endl;
     }
+    std::cout << std::endl;
 }
 */

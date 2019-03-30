@@ -2,8 +2,8 @@
 #include "cub/cub/cub.cuh"
 #include "block-size.h"
 
-__device__ inline void SusceptibleToInfected(uint32_t tidx, STATE state, curandState* pPrngState);
-__device__ inline float UpdateInfected(uint32_t tidx, STATE state, bool& is_infected, bool& is_infectious);
+__device__ inline void SusceptibleToInfected(uint32_t tidx, Population state, curandState* pPrngState);
+__device__ inline float UpdateInfected(uint32_t tidx, Population state, bool& is_infected, bool& is_infectious);
 __device__ inline uint32_t randrange(curandState* prngState, uint32_t min, uint32_t max);
 
 __global__ void do_step(
@@ -11,8 +11,8 @@ __global__ void do_step(
     uint32_t time_step,
     uint32_t* populations,
     float* contagion,
-    STATE state,
-    OUTPUT output,
+    Population state,
+    Statistics output,
     curandState* prngState)
 {
     int tidx = threadIdx.x + (blockIdx.x * blockDim.x);
@@ -77,7 +77,7 @@ __global__ void do_step(
     }
 }
 
-__device__ inline void SusceptibleToInfected(uint32_t tidx, STATE state, curandState* pPrngState)
+__device__ inline void SusceptibleToInfected(uint32_t tidx, Population state, curandState* pPrngState)
 {
     state.flags[tidx]               |= INFECTED;
     state.elapsed_time[tidx]         = 0;
@@ -87,7 +87,7 @@ __device__ inline void SusceptibleToInfected(uint32_t tidx, STATE state, curandS
     state.immunity[tidx]             = UINT16_MAX;
 }
 
-__device__ inline float UpdateInfected(uint32_t tidx, STATE state, bool& is_infected, bool& is_infectious)
+__device__ inline float UpdateInfected(uint32_t tidx, Population state, bool& is_infected, bool& is_infectious)
 {
     // is_infected = true;     // already set or we wouldn't be here
     // is_infectious = false;  // already set

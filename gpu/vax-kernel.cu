@@ -1,3 +1,7 @@
+/*
+** copyright
+*/
+
 #include "vax-kernel.h"
 
 __global__ void vaccinate_const(
@@ -6,7 +10,7 @@ __global__ void vaccinate_const(
     uint32_t min_age,
     uint32_t max_age,
     uint32_t duration,
-    STATE state)
+    Population state)
 {
     uint32_t tidx = (blockIdx.x * blockDim.x) + threadIdx.x;
 
@@ -31,7 +35,7 @@ __global__ void vaccinate_poisson(
     uint32_t min_age,
     uint32_t max_age,
     uint32_t duration,
-    STATE state,
+    Population state,
     curandState* pPrngState)
 {
     uint32_t tidx = (blockIdx.x * blockDim.x) + threadIdx.x;

@@ -12,6 +12,7 @@ uint32_t Configuration::Default_Geography_Torus_Size              =   10;
 std::vector<std::string> Configuration::Demographics_Filenames;
 std::string Configuration::Regional_Migration_Filename;
 uint32_t Configuration::Run_Number                                =    1;
+float Configuration::x_Base_Population                            =    1.0f;
 
 
 Configuration::Configuration()
@@ -31,7 +32,13 @@ Configuration::~Configuration()
     else \
         var = _default;
 
-#define GetStringParam( var, _default ) \
+#define GetFloatParam( var, _default ) \
+    if ( parameters.HasMember( #var ) ) \
+        var = float(parameters[ #var ].GetDouble()); \
+    else \
+        var = _default;
+
+    #define GetStringParam( var, _default ) \
     if ( parameters.HasMember( #var ) ) \
         var = parameters[ #var ].GetString(); \
     else \
@@ -71,6 +78,7 @@ void Configuration::FromString( const std::string& input )
         GetStringVectorParam( Demographics_Filenames, std::vector<std::string>() );
         GetStringParam( Regional_Migration_Filename, "" );
         GetUintParam( Run_Number, 1 );
+        GetFloatParam( x_Base_Population, 1.0f );
     }
 }
 

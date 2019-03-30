@@ -1,5 +1,6 @@
 #pragma once
 
+#include "population.h"
 #include "measles-types.h"
 
 __global__ void do_step(
@@ -7,7 +8,7 @@ __global__ void do_step(
     uint32_t time_step,
     uint32_t* populations,
     float* contagion,
-    STATE state,
-    OUTPUT output,
+    Population state,
+    Statistics output,
     curandState* prngState
 );

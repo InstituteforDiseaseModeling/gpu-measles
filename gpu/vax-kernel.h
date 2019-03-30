@@ -1,6 +1,12 @@
+/*
+** copyright
+*/
+
 #pragma once
 
-#include "measles-types.h"
+#include <curand_kernel.h>
+
+#include "population.h"
 
 __global__ void vaccinate_const(
     uint32_t agent_count,
@@ -8,7 +14,7 @@ __global__ void vaccinate_const(
     uint32_t min_age,
     uint32_t max_age,
     uint32_t duration,
-    STATE state);
+    Population state);
 
 __global__ void vaccinate_poisson(
     uint32_t agent_count,
@@ -16,5 +22,5 @@ __global__ void vaccinate_poisson(
     uint32_t min_age,
     uint32_t max_age,
     uint32_t duration,
-    STATE state,
+    Population state,
     curandState* pPrngState);

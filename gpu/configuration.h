@@ -3,8 +3,12 @@
 #include <string>
 #include <vector>
 
+#ifndef RAPIDJSON_HAS_STDSTRING
 #define RAPIDJSON_HAS_STDSTRING 1
+#endif
+#ifndef RAPIDJSON_HAS_CXX11_RANGE_FOR
 #define RAPIDJSON_HAS_CXX11_RANGE_FOR   1
+#endif
 #include "rapidjson/document.h"
 
 class Configuration
@@ -26,6 +30,7 @@ public:
     static std::vector<std::string> Demographics_Filenames;
     static std::string Regional_Migration_Filename;
     static uint32_t Run_Number;
+    static float x_Base_Population;
 
 protected:
 

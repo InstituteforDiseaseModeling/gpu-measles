@@ -11,11 +11,13 @@
 #include <cuda_fp16.h>
 #include <curand_kernel.h>
 
+#include "census.h"
+#include "statistics.h"
+
 #define INFECTED    (0x01)
 #define VACCINATED  (0x02)
 
 struct Population {
-    uint32_t capacity;
     uint32_t size;
     uint8_t* flags;                 // See #defines above
     uint8_t* elapsed_time;          // Up to 255 days, could need more for sum of exposure and infectious
@@ -26,25 +28,32 @@ struct Population {
     uint16_t* immunity;             // 0 = susceptible, otherwise count-down "timer"
     __half* infectivity;            // Could be 0|1, might need floating point later
 
-    Population( uint32_t capacity );
-    ~Population();
-
-    void LoadFile( const std::string& filename );
-    void Update( size_t step, uint32_t* populations, float* contagion, OUTPUT current );
-
-protected:
-    curandState_t*  pPrngStates;
-    uint16_t        numLocales;
-    bool            isView;
-
-    Population( const Population& source );
-
-    void initializePrngStates();
-    void loadJsonPopulationFile( const std::string& filename, std::vector<uint32_t>& populations );
-    void instantiateNewIndividuals( size_t offset, uint32_t count, int32_t* new_individuals, OUTPUT stats );
-    void scramblePopulation( size_t offset );
-    void initializeNewIndividuals( size_t offset, uint32_t count, uint16_t mean_age, bool initial_immunity, OUTPUT stats );
+    // Population();
+    // Population( const Population& source );
 
     Population operator +(size_t offset);
+
+// TODO - move this back to protected once VitalDynamics is part of PopulationImpl
+//protected:
+    curandState_t*  pPrngStates;
 };
 
+struct PopulationImpl : public Population
+{
+    uint32_t capacity;
+
+    PopulationImpl( uint32_t capacity, uint32_t prng_seed );
+    ~PopulationImpl();
+
+    void Initialize( const Census& census );
+    void Update( size_t step, uint32_t* populations, float* contagion, Statistics current );
+
+protected:
+    uint16_t    numLocales;
+    uint32_t*   populations;
+
+    void initializePrngStates( uint32_t prng_seed );
+    void instantiateNewIndividuals( size_t offset, uint32_t count, int32_t* new_individuals, Statistics stats );
+    void scramblePopulation( size_t offset, uint32_t count );
+    void initializeNewIndividuals( size_t offset, uint32_t count, uint16_t mean_age, bool initial_immunity, Statistics stats );
+};

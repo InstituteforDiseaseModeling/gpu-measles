@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 
 struct Transmission
 {
@@ -38,3 +39,5 @@ struct DummyTx : public Transmission
     virtual ~DummyTx() {}
     virtual void DoTransmission( float* pInput, float* pOutput, uint32_t* pPopulations ) override {}
 };
+
+Transmission* TransmissionFromFile( const std::string& filename, uint32_t num_locations );
