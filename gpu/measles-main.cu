@@ -25,6 +25,15 @@
 
 bool debug = false;
 
+// crude birthrate: 40/1000/year = 0.04/individual/year  = 0.00010958904109589041/individual/day
+// crude mortality: 15/1000/year = 0.015/individual/year
+//                               = 0.985/individual/year survival probability
+//                               = 0.99995859363039054212/individual/day survival probability
+//                               = 0.00004140636960945788/individual/day mortality probability
+
+#define BIRTHRATE   (0.0001096f)
+#define MORTALITY   (0.0000414f)
+
 int main(int argc, const char* argv[])
 {
     SimConfig configuration;
@@ -42,13 +51,6 @@ int main(int argc, const char* argv[])
     StatisticsImpl output( configuration.sim_duration, census.num_locales );
     StatisticsImpl initial( 1, census.num_locales, census.population, census.prevalence );
 
-    // crude birthrate: 40/1000/year = 0.04/individual/year  = 0.00010958904109589041/individual/day
-    // crude mortality: 15/1000/year = 0.015/individual/year
-    //                               = 0.985/individual/year survival probability
-    //                               = 0.99995859363039054212/individual/day survival probability
-    //                               = 0.00004140636960945788/individual/day mortality probability
-    VitalDynamics vitalDynamics( 0.00011f, 0.0000414f, census.num_locales, population.pPrngStates, population, output );
-
     uint32_t* populations = initial.population;
     float* contagion      = initial.contagion;
     Statistics current = output;
@@ -59,7 +61,7 @@ int main(int argc, const char* argv[])
         population.Update( step, populations, contagion, current );
 
         spatialTransmission->DoTransmission( current.contagion, current.contagion, populations );
-        uint32_t new_individuals = vitalDynamics.Update( populations, 1.0f, current, population.size );
+        population.VitalDynamics( BIRTHRATE, MORTALITY, 1.0f, current );
 
         // Capture this time step's contagion to use in the next time step
         contagion = current.contagion;

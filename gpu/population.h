@@ -47,10 +47,12 @@ struct PopulationImpl : public Population
 
     void Initialize( const Census& census );
     void Update( size_t step, uint32_t* populations, float* contagion, Statistics current );
+    void VitalDynamics( float birth_rate, float mortality, float dt, Statistics current );
 
 protected:
     uint16_t    numLocales;
     uint32_t*   populations;
+    int32_t*    birthsByLocale;
 
     void initializePrngStates( uint32_t prng_seed );
     void instantiateNewIndividuals( size_t offset, uint32_t count, int32_t* new_individuals, Statistics stats );
