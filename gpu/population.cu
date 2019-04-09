@@ -36,7 +36,6 @@ Population Population::operator +(size_t offset)
 PopulationImpl::PopulationImpl( uint32_t capacity, uint32_t prng_seed )
     : capacity( capacity )
     , numLocales( 0 )
-    , populations( nullptr )
     , birthsByLocale( nullptr )
 {
     // Using sizeof(field[0]) lets us change the datatypes more easily...
@@ -68,7 +67,6 @@ PopulationImpl::PopulationImpl( uint32_t capacity, uint32_t prng_seed )
 PopulationImpl::~PopulationImpl()
 {
     cuda::free( birthsByLocale );
-    cuda::free( populations );
     cuda::free( pPrngStates );
     cuda::free( infectivity );
     cuda::free( immunity );
@@ -104,6 +102,7 @@ void PopulationImpl::Initialize( const Census& census )
     numLocales = census.population.size();
     size = std::accumulate( census.population.begin(), census.population.end(), 0 );
 
+    uint32_t*   populations;
     cuda::mallocManaged( &populations, numLocales * sizeof(populations[0]) );
     cuda::memcpy( populations, census.population.data(), numLocales * sizeof(populations[0]), cudaMemcpyDefault );
 
@@ -111,6 +110,7 @@ void PopulationImpl::Initialize( const Census& census )
 
     Statistics stats;
     instantiateNewIndividuals( 0, size, reinterpret_cast<int32_t*>(populations), stats );
+    cuda::free( populations );
 }
 
 __global__ void new_individuals( uint32_t count, uint32_t num_locations, int32_t* births, Population state, curandState_t* pPrngStates )
@@ -222,19 +222,11 @@ void PopulationImpl::initializeNewIndividuals( size_t offset, uint32_t count, ui
     cuda::deviceSynchronize();
 }
 
-void PopulationImpl::Update( size_t time_step, uint32_t* populations, float* contagion, Statistics current )
+void PopulationImpl::Update( Statistics current, Statistics next )
 {
     dim3 blocks( THREADS_PER_BLOCK, 1, 1 );
     dim3 grid( (size + blocks.x - 1) / blocks.x, 1, 1 );
-    do_step<<<grid, blocks>>>(
-        size,
-        time_step,
-        populations,
-        contagion,
-        *this,
-        current,
-        pPrngStates);
-
+    update_population<<<grid, blocks>>>( *this, current, next );
     cuda::deviceSynchronize();
 }
 
@@ -341,13 +333,23 @@ __global__ void initialize_newborns( uint32_t count, Population state, Statistic
     }
 }
 
-void PopulationImpl::VitalDynamics( float birthRate, float mortality, float dt, Statistics current )
+__global__ void update_census( uint16_t num_locales, Statistics current, uint32_t* births, Statistics next )
+{
+    uint32_t tidx = (blockIdx.x * blockDim.x) + threadIdx.x;
+
+    if ( tidx < num_locales )
+    {
+        next.population[ tidx ] = current.population[ tidx ] + births[ tidx ];
+    }
+}
+
+void PopulationImpl::VitalDynamics( float birthRate, float mortality, float dt, Statistics current, Statistics next )
 {
     dim3 blocks( THREADS_PER_BLOCK, 1, 1 );
     dim3 grid( (numLocales + blocks.x - 1) / blocks.x, 1, 1 );
 
     // Use a Poisson draw based on national birthrate and local population to determine total births in each location.
-    births_for_time_period<<<grid, blocks>>>( populations, numLocales, birthRate, dt, birthsByLocale, pPrngStates );
+    births_for_time_period<<<grid, blocks>>>( current.population, numLocales, birthRate, dt, birthsByLocale, pPrngStates );
     cuda::deviceSynchronize();
 
     // Take care of non-disease mortality
@@ -399,6 +401,10 @@ void PopulationImpl::VitalDynamics( float birthRate, float mortality, float dt, 
 
         size += new_individuals;
     }
+
+    grid = dim3( (numLocales + blocks.x - 1) / blocks.x, 1, 1 );
+    update_census<<<grid, blocks>>>( numLocales, current, (uint32_t*)birthsByLocale, next );
+    cuda::deviceSynchronize();
 }
 
 /*

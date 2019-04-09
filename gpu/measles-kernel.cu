@@ -4,27 +4,23 @@
 
 __device__ inline void SusceptibleToInfected(uint32_t tidx, Population state, curandState* pPrngState);
 __device__ inline float UpdateInfected(uint32_t tidx, Population state, bool& is_infected, bool& is_infectious);
-__device__ inline uint32_t randrange(curandState* prngState, uint32_t min, uint32_t max);
+__device__ inline uint32_t randrange(curandState* pPrngState, uint32_t min, uint32_t max);
 
-__global__ void do_step(
-    uint32_t agent_count,
-    uint32_t time_step,
-    uint32_t* populations,
-    float* contagion,
+__global__ void update_population(
     Population state,
-    Statistics output,
-    curandState* prngState)
+    Statistics current,
+    Statistics output)
 {
     int tidx = threadIdx.x + (blockIdx.x * blockDim.x);
 
-    uint32_t susceptible = 0;
-    uint32_t exposed     = 0;
-    uint32_t infectious  = 0;
-    uint32_t recovered   = 0;
+    if ( tidx < state.size ) {  // Number of active agents
 
-    float infectivity = 0.0f;
+        uint32_t susceptible = 0;
+        uint32_t exposed     = 0;
+        uint32_t infectious  = 0;
+        uint32_t recovered   = 0;
 
-    if ( tidx < agent_count ) {
+        float infectivity = 0.0f;
 
         uint32_t location = state.location[tidx];
 
@@ -42,12 +38,12 @@ __global__ void do_step(
 
             if ( !is_immune )
             {
-                float draw = curand_uniform(&prngState[tidx]);
-                float susceptibility = contagion[location] / populations[location];
+                float draw = curand_uniform(&state.pPrngStates[tidx]);
+                float susceptibility = current.contagion[location] / current.population[location];
 
                 if ( draw <= susceptibility )
                 {
-                    SusceptibleToInfected(tidx, state, &prngState[tidx]);
+                    SusceptibleToInfected(tidx, state, &state.pPrngStates[tidx]);
                     innoculated = true;
                     is_infected = true;
                 }
@@ -127,8 +123,8 @@ __device__ inline float UpdateInfected(uint32_t tidx, Population state, bool& is
 }
 
 // Returns an integer in the range [min, max).
-__device__ inline uint32_t randrange(curandState* prngState, uint32_t minimum, uint32_t maximum) {
-    uint32_t draw = curand(prngState);
+__device__ inline uint32_t randrange(curandState* pPrngState, uint32_t minimum, uint32_t maximum) {
+    uint32_t draw = curand(pPrngState);
     uint32_t mn = min(minimum, maximum);
     uint32_t mx = max(minimum, maximum);
     draw %= (mx - mn);

@@ -21,7 +21,6 @@
 #include "spatial-tx.h"
 #include "utilities.h"
 #include "vax-kernel.h"
-#include "vital-dynamics.h"
 
 bool debug = false;
 
@@ -48,28 +47,21 @@ int main(int argc, const char* argv[])
 
     Transmission* spatialTransmission = TransmissionFromFile( configuration.network_file_name, census.num_locales );
 
-    StatisticsImpl output( configuration.sim_duration, census.num_locales );
-    StatisticsImpl initial( 1, census.num_locales, census.population, census.prevalence );
-
-    uint32_t* populations = initial.population;
-    float* contagion      = initial.contagion;
-    Statistics current = output;
+    StatisticsImpl statistics( configuration.sim_duration + 1, census.num_locales, census.population, census.prevalence );
 
     auto start = clock();
     for ( size_t step = 0; step < configuration.sim_duration; ++step )
     {
-        population.Update( step, populations, contagion, current );
+        Statistics current = statistics + step;
+        Statistics next    = current + 1;
+        population.Update( current, next );
 
-        spatialTransmission->DoTransmission( current.contagion, current.contagion, populations );
-        population.VitalDynamics( BIRTHRATE, MORTALITY, 1.0f, current );
-
-        // Capture this time step's contagion to use in the next time step
-        contagion = current.contagion;
-        current = current + size_t(1);
+        // Contagion went into next but population does not get updated until VitalDynamics below.
+        spatialTransmission->DoTransmission( next.contagion, next.contagion, current.population );
+        population.VitalDynamics( BIRTHRATE, MORTALITY, 1.0f, current, next );
     }
-
     auto end = clock();
     util::PrintElapsedTime(start, end, "Simulation");
 
-    output.WriteToFile( "output.csv" );
+    statistics.WriteToFile( "output.csv" );
 }

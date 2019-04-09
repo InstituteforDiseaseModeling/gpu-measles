@@ -23,6 +23,7 @@ struct Statistics
     Statistics( const Statistics& source );
 
     Statistics operator +(size_t offset);
+    Statistics operator [](size_t index);
 };
 
 struct StatisticsImpl : public Statistics

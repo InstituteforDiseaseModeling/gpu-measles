@@ -28,12 +28,9 @@ struct Population {
     uint16_t* immunity;             // 0 = susceptible, otherwise count-down "timer"
     __half* infectivity;            // Could be 0|1, might need floating point later
 
-    // Population();
-    // Population( const Population& source );
-
     Population operator +(size_t offset);
 
-// TODO - move this back to protected once VitalDynamics is part of PopulationImpl
+// TODO - consider moving this back to protected
 //protected:
     curandState_t*  pPrngStates;
 };
@@ -46,12 +43,11 @@ struct PopulationImpl : public Population
     ~PopulationImpl();
 
     void Initialize( const Census& census );
-    void Update( size_t step, uint32_t* populations, float* contagion, Statistics current );
-    void VitalDynamics( float birth_rate, float mortality, float dt, Statistics current );
+    void Update( Statistics current, Statistics next );
+    void VitalDynamics( float birth_rate, float mortality, float dt, Statistics current, Statistics next );
 
 protected:
     uint16_t    numLocales;
-    uint32_t*   populations;
     int32_t*    birthsByLocale;
 
     void initializePrngStates( uint32_t prng_seed );

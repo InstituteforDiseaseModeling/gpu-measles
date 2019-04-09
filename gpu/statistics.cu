@@ -49,6 +49,11 @@ Statistics Statistics::operator +(size_t offset)
     return result;
 }
 
+Statistics Statistics::operator [](size_t index)
+{
+    return *this + index;
+}
+
 StatisticsImpl::StatisticsImpl( uint32_t time_steps, uint32_t num_locales, const std::vector<uint32_t>& initial_population, const std::vector<float>& initial_prevalence )
     : capacity( time_steps )
 {
