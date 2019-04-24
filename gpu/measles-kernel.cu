@@ -7,9 +7,11 @@ __device__ inline float UpdateInfected(uint32_t tidx, Population state, bool& is
 __device__ inline uint32_t randrange(curandState* pPrngState, uint32_t min, uint32_t max);
 
 __global__ void update_population(
+    uint16_t timeStep,
     Population state,
     Statistics current,
-    Statistics output)
+    Statistics output,
+    TransmissionLog transmission)
 {
     int tidx = threadIdx.x + (blockIdx.x * blockDim.x);
 
@@ -30,7 +32,7 @@ __global__ void update_population(
         bool innoculated   = false;
 
         // Everyone (even children) gets older...
-        ++state.age_in_days[tidx];
+        uint16_t age = ++state.age_in_days[tidx];
 
         if ( !is_infected )
         {
@@ -46,6 +48,14 @@ __global__ void update_population(
                     SusceptibleToInfected(tidx, state, &state.pPrngStates[tidx]);
                     innoculated = true;
                     is_infected = true;
+
+                    uint32_t slot = atomicAdd( transmission.pSize, 1 );
+                    if ( slot < transmission.capacity )
+                    {
+                        transmission.pTimeStep[ slot ]       = timeStep;
+                        transmission.pLocale[ slot ]         = location;
+                        transmission.pAgeAtInfection[ slot ] = age;
+                    }
                 }
             }
             else

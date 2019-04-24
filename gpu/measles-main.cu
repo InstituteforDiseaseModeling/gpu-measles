@@ -48,13 +48,14 @@ int main(int argc, const char* argv[])
     Transmission* spatialTransmission = TransmissionFromFile( configuration.network_file_name, census.num_locales );
 
     StatisticsImpl statistics( configuration.sim_duration + 1, census.num_locales, census.population, census.prevalence );
+    TransmissionLogImpl transmissions( 1 << 28 );
 
     auto start = clock();
     for ( size_t step = 0; step < configuration.sim_duration; ++step )
     {
         Statistics current = statistics + step;
         Statistics next    = current + 1;
-        population.Update( current, next );
+        population.Update( uint32_t(step), current, next, transmissions );
 
         // Contagion went into next but population does not get updated until VitalDynamics below.
         spatialTransmission->DoTransmission( next.contagion, next.contagion, current.population );
@@ -64,4 +65,5 @@ int main(int argc, const char* argv[])
     util::PrintElapsedTime(start, end, "Simulation");
 
     statistics.WriteToFile( "output.csv" );
+    transmissions.WriteToFile( "transmission.bin" );
 }

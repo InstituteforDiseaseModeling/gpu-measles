@@ -222,11 +222,11 @@ void PopulationImpl::initializeNewIndividuals( size_t offset, uint32_t count, ui
     cuda::deviceSynchronize();
 }
 
-void PopulationImpl::Update( Statistics current, Statistics next )
+void PopulationImpl::Update( uint32_t timeStep, Statistics current, Statistics next, TransmissionLog transmissions )
 {
     dim3 blocks( THREADS_PER_BLOCK, 1, 1 );
     dim3 grid( (size + blocks.x - 1) / blocks.x, 1, 1 );
-    update_population<<<grid, blocks>>>( *this, current, next );
+    update_population<<<grid, blocks>>>( timeStep, *this, current, next, transmissions );
     cuda::deviceSynchronize();
 }
 

@@ -13,6 +13,7 @@
 
 #include "census.h"
 #include "statistics.h"
+#include "tx-log.h"
 
 #define INFECTED    (0x01)
 #define VACCINATED  (0x02)
@@ -43,7 +44,7 @@ struct PopulationImpl : public Population
     ~PopulationImpl();
 
     void Initialize( const Census& census );
-    void Update( Statistics current, Statistics next );
+    void Update( uint32_t timeStep, Statistics current, Statistics next, TransmissionLog transmissions );
     void VitalDynamics( float birth_rate, float mortality, float dt, Statistics current, Statistics next );
 
 protected:
