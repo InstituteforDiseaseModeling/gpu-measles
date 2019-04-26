@@ -6,12 +6,24 @@ import pandas
 import sys
 
 
+'''
+"interesting" locales:
+         name                 node id* (node index)
+    NW - KANO:NASARAWA             314 (313)
+    SW - LAGOS:ALIMOSHO            656 (655)
+    SS - RIVERS:PORT_HARCOURT      636 (635)
+    NC - FCT_ABUJA:ABUJA_MUNICIPAL  25 ( 24)
+    NE - BORNO:MAIDUGUI            183 (182)
+    SE - ANAMBRA:IDEMILI_NORTH     446 (445)
+    *from demographics
+'''
+
 def main(filename, log=False):
 
     print("Loading file '{0}'...".format(filename), end='', flush=True)
     df = pandas.read_csv(filename)
     print('finished.', flush=True)
-    data = list(zip(df['S304'], df['E304'], df['I304'], df['R304'], df['P304']))
+    data = list(zip(df['S314'], df['E314'], df['I314'], df['R314'], df['P314']))
     if log:
         plt.yscale('log')
     plt.plot(data)

@@ -21,6 +21,7 @@
 #include "spatial-tx.h"
 #include "utilities.h"
 #include "vax-kernel.h"
+#include "importation.h"
 
 bool debug = false;
 
@@ -50,6 +51,8 @@ int main(int argc, const char* argv[])
     StatisticsImpl statistics( configuration.sim_duration + 1, census.num_locales, census.population, census.prevalence );
     TransmissionLogImpl transmissions( 1 << 28 );
 
+    Importation* importation = new ContagionIncrease( 30, std::vector<uint16_t>({ 313, 655, 635, 24, 182, 445 }), 20.0f );
+
     auto start = clock();
     for ( size_t step = 0; step < configuration.sim_duration; ++step )
     {
@@ -60,6 +63,7 @@ int main(int argc, const char* argv[])
         // Contagion went into next but population does not get updated until VitalDynamics below.
         spatialTransmission->DoTransmission( next.contagion, next.contagion, current.population );
         population.VitalDynamics( BIRTHRATE, MORTALITY, 1.0f, current, next );
+        importation->Apply( step, population, statistics );
     }
     auto end = clock();
     util::PrintElapsedTime(start, end, "Simulation");

@@ -88,7 +88,7 @@ __device__ inline void SusceptibleToInfected(uint32_t tidx, Population state, cu
     state.flags[tidx]               |= INFECTED;
     state.elapsed_time[tidx]         = 0;
     state.exposure_duration[tidx]    = randrange(pPrngState, 2, 5);
-    state.infectious_duration[tidx]  = randrange(pPrngState, 5, 10);
+    state.infectious_duration[tidx]  = 10; // randrange(pPrngState, 5, 10);
     state.infectivity[tidx]          = 0.0f;
     state.immunity[tidx]             = UINT16_MAX;
 }
@@ -111,7 +111,7 @@ __device__ inline float UpdateInfected(uint32_t tidx, Population state, bool& is
         {
             // in infectious period
             is_infectious = true;
-            infectivity = max(1.0f - pow(2.0f * float(infectious_timer) / infectious_duration - 1, 2), 0.0f);
+            infectivity = 2.0f; // max(1.0f - pow(2.0f * float(infectious_timer) / infectious_duration - 1, 2), 0.0f);
             // TBD - infectivity might be zero based on this calculation, should
             // the individual still be considered infectious?
         }
