@@ -87,7 +87,7 @@ __device__ inline void SusceptibleToInfected(uint32_t tidx, Population state, cu
 {
     state.flags[tidx]               |= INFECTED;
     state.elapsed_time[tidx]         = 0;
-    state.exposure_duration[tidx]    = randrange(pPrngState, 2, 5);
+    state.incubation_duration[tidx]  = randrange(pPrngState, 2, 5);
     state.infectious_duration[tidx]  = 10; // randrange(pPrngState, 5, 10);
     state.infectivity[tidx]          = 0.0f;
     state.immunity[tidx]             = UINT16_MAX;
@@ -99,15 +99,15 @@ __device__ inline float UpdateInfected(uint32_t tidx, Population state, bool& is
     // is_infectious = false;  // already set
 
     uint32_t timer               = ++state.elapsed_time[tidx];
-    uint32_t exposure_duration   =   state.exposure_duration[tidx];
+    uint32_t incubation_duration =   state.incubation_duration[tidx];
     uint32_t infectious_duration =   state.infectious_duration[tidx];
     // 0 <= infectious_timer <= infectious_duration
-    uint32_t infectious_timer    = min(max(timer - exposure_duration, 0), infectious_duration);
+    uint32_t infectious_timer    = min(max(timer - incubation_duration, 0), infectious_duration);
     float infectivity = 0.0f;
 
-    if ( timer >= exposure_duration )
+    if ( timer >= incubation_duration )
     {
-        if ( timer <= (exposure_duration + infectious_duration) )
+        if ( timer <= (incubation_duration + infectious_duration) )
         {
             // in infectious period
             is_infectious = true;
@@ -137,7 +137,7 @@ __device__ inline uint32_t randrange(curandState* pPrngState, uint32_t minimum, 
     uint32_t draw = curand(pPrngState);
     uint32_t mn = min(minimum, maximum);
     uint32_t mx = max(minimum, maximum);
-    draw %= (mx - mn);
+    draw %= ((mx != mn) ? (mx - mn) : 1);
     draw += mn;
 
     return draw;

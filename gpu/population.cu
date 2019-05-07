@@ -22,7 +22,7 @@ Population Population::operator +(size_t offset)
     Population result( *this );
     result.flags               += offset;
     result.elapsed_time        += offset;
-    result.exposure_duration   += offset;
+    result.incubation_duration += offset;
     result.infectious_duration += offset;
     result.age_in_days         += offset;
     result.location            += offset;
@@ -42,7 +42,7 @@ PopulationImpl::PopulationImpl( uint32_t capacity, uint32_t prng_seed )
 
     cuda::mallocManaged( &flags,               capacity * sizeof(flags[0]) );
     cuda::mallocManaged( &elapsed_time,        capacity * sizeof(elapsed_time[0]) );
-    cuda::mallocManaged( &exposure_duration,   capacity * sizeof(exposure_duration[0]) );
+    cuda::mallocManaged( &incubation_duration, capacity * sizeof(incubation_duration[0]) );
     cuda::mallocManaged( &infectious_duration, capacity * sizeof(infectious_duration[0]) );
     cuda::mallocManaged( &age_in_days,         capacity * sizeof(age_in_days[0]) );
     cuda::mallocManaged( &location,            capacity * sizeof(location[0]) );
@@ -51,7 +51,7 @@ PopulationImpl::PopulationImpl( uint32_t capacity, uint32_t prng_seed )
 
     cuda::memset( flags,               0, capacity * sizeof(flags[0]) );
     cuda::memset( elapsed_time,        0, capacity * sizeof(elapsed_time[0]) );
-    cuda::memset( exposure_duration,   0, capacity * sizeof(exposure_duration[0]) );
+    cuda::memset( incubation_duration, 0, capacity * sizeof(incubation_duration[0]) );
     cuda::memset( infectious_duration, 0, capacity * sizeof(infectious_duration[0]) );
     cuda::memset( age_in_days,         0, capacity * sizeof(age_in_days[0]) );
     cuda::memset( location,            0, capacity * sizeof(location[0]) );
@@ -73,7 +73,7 @@ PopulationImpl::~PopulationImpl()
     cuda::free( location );
     cuda::free( age_in_days );
     cuda::free( infectious_duration );
-    cuda::free( exposure_duration );
+    cuda::free( incubation_duration );
     cuda::free( elapsed_time );
     cuda::free( flags );
 }
@@ -185,7 +185,7 @@ __global__ void initialize_newborns( uint32_t count, Population state, uint16_t 
     {
         state.flags[ tidx ]               = 0;
         state.elapsed_time[ tidx ]        = 0;
-        state.exposure_duration[ tidx ]   = 0;
+        state.incubation_duration[ tidx ] = 0;
         state.infectious_duration[ tidx ] = 0;
         uint32_t age = (mean_age > 0) ? uint32_t(-log(curand_uniform(&pPrngStates[tidx])) * mean_age) : 0;
         state.age_in_days[tidx] = min(age, MAX_AGE);
@@ -256,7 +256,7 @@ __global__ void non_disease_deaths( Population state, Statistics stats, uint32_t
 
             state.flags[ tidx ]               = 0;
             state.elapsed_time[ tidx ]        = 0;
-            state.exposure_duration[ tidx ]   = 0;
+            state.incubation_duration[ tidx ] = 0;
             state.infectious_duration[ tidx ] = 0;
             state.age_in_days[ tidx ]         = 0;
             uint32_t location = state.location[ tidx ];  // Use current location, i.e. non-disease deaths -> births
@@ -314,7 +314,7 @@ __global__ void initialize_newborns( uint32_t count, Population state, Statistic
     {
         state.flags[ tidx ]               = 0;
         state.elapsed_time[ tidx ]        = 0;
-        state.exposure_duration[ tidx ]   = 0;
+        state.incubation_duration[ tidx ] = 0;
         state.infectious_duration[ tidx ] = 0;
         state.age_in_days[ tidx ]         = 0;
         uint32_t location = state.location[ tidx ];

@@ -22,7 +22,7 @@ struct Population {
     uint32_t size;
     uint8_t* flags;                 // See #defines above
     uint8_t* elapsed_time;          // Up to 255 days, could need more for sum of exposure and infectious
-    uint8_t* exposure_duration;     // Up to 255 days
+    uint8_t* incubation_duration;   // Up to 255 days
     uint8_t* infectious_duration;   // Up to 255 days
     uint16_t* age_in_days;          // Up to 65535 days = 179.5 year
     uint16_t* location;             // Up to 65535 different locations
