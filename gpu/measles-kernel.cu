@@ -1,6 +1,13 @@
+/*
+** copyright banner
+*/
+
+#include "constants.h"
 #include "measles-kernel.h"
 #include "cub/cub/cub.cuh"
 #include "block-size.h"
+
+__constant__ Constants parameters;
 
 __device__ inline void SusceptibleToInfected(uint32_t tidx, Population state, curandState* pPrngState);
 __device__ inline float UpdateInfected(uint32_t tidx, Population state, bool& is_infected, bool& is_infectious);
@@ -87,8 +94,8 @@ __device__ inline void SusceptibleToInfected(uint32_t tidx, Population state, cu
 {
     state.flags[tidx]               |= INFECTED;
     state.elapsed_time[tidx]         = 0;
-    state.incubation_duration[tidx]  = randrange(pPrngState, 2, 5);
-    state.infectious_duration[tidx]  = 10; // randrange(pPrngState, 5, 10);
+    state.incubation_duration[tidx]  = randrange( pPrngState, parameters.incubation_duration_minimum, parameters.incubation_duration_maximum ); //randrange(pPrngState, 2, 5);
+    state.infectious_duration[tidx]  = randrange( pPrngState, parameters.infection_duration_minimum, parameters.infection_duration_maximum); // 10; // randrange(pPrngState, 5, 10);
     state.infectivity[tidx]          = 0.0f;
     state.immunity[tidx]             = UINT16_MAX;
 }
@@ -111,7 +118,7 @@ __device__ inline float UpdateInfected(uint32_t tidx, Population state, bool& is
         {
             // in infectious period
             is_infectious = true;
-            infectivity = 2.0f; // max(1.0f - pow(2.0f * float(infectious_timer) / infectious_duration - 1, 2), 0.0f);
+            infectivity = parameters.infectivity;
             // TBD - infectivity might be zero based on this calculation, should
             // the individual still be considered infectious?
         }
@@ -124,7 +131,7 @@ __device__ inline float UpdateInfected(uint32_t tidx, Population state, bool& is
     }
     else
     {
-        // nothing, just progressing through exposure
+        // nothing, just progressing through incubation
     }
 
     state.infectivity[tidx] = infectivity;
@@ -141,4 +148,9 @@ __device__ inline uint32_t randrange(curandState* pPrngState, uint32_t minimum, 
     draw += mn;
 
     return draw;
+}
+
+void Constants::UpdateDevice( void )
+{
+    cudaMemcpyToSymbol( parameters, this, sizeof(Constants) );
 }

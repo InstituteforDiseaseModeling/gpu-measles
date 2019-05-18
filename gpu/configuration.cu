@@ -12,8 +12,12 @@ uint32_t Configuration::Default_Geography_Torus_Size              =   10;
 std::vector<std::string> Configuration::Demographics_Filenames;
 std::string Configuration::Regional_Migration_Filename;
 uint32_t Configuration::Run_Number                                =    1;
-float Configuration::x_Base_Population                            =    1.0f;
-
+float    Configuration::x_Base_Population                         =    1.0f;
+uint32_t Configuration::Incubation_Period_Min                     =    2;
+uint32_t Configuration::Incubation_Period_Max                     =    5;
+uint32_t Configuration::Infectious_Period_Min                     =    8;
+uint32_t Configuration::Infectious_Period_Max                     =   12;
+float    Configuration::Base_Infectivity                          =    2.0f;
 
 Configuration::Configuration()
     : document()
@@ -79,6 +83,11 @@ void Configuration::FromString( const std::string& input )
         GetStringParam( Regional_Migration_Filename, "" );
         GetUintParam( Run_Number, 1 );
         GetFloatParam( x_Base_Population, 1.0f );
+        GetUintParam( Incubation_Period_Min,  2 );
+        GetUintParam( Incubation_Period_Max,  5 );
+        GetUintParam( Infectious_Period_Min,  8 );
+        GetUintParam( Infectious_Period_Max, 12 );
+        GetFloatParam( Base_Infectivity, 2.0f );
     }
 }
 

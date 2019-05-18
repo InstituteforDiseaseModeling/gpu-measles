@@ -70,6 +70,12 @@ void SimConfig::Initialize( int argc, const char* argv[] )
         }
 
         population_scale = Configuration::x_Base_Population;
+
+        incubation_duration_minimum = Configuration::Incubation_Period_Min;
+        incubation_duration_maximum = Configuration::Incubation_Period_Max;
+        infection_duration_minimum  = Configuration::Infectious_Period_Min;
+        infection_duration_maximum  = Configuration::Infectious_Period_Max;
+        infectivity = Configuration::Base_Infectivity;
     }
 
     debug = bool( args.count("debug") );

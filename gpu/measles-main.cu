@@ -15,6 +15,7 @@
 
 #include "block-size.h"
 #include "configuration.h"
+#include "constants.h"
 #include "demographics.h"
 #include "distributions.h"
 #include "measles-kernel.h"
@@ -43,6 +44,14 @@ int main(int argc, const char* argv[])
     census.Initialize( configuration );
     PopulationImpl  population( 1 << 28, configuration.prng_seed ); // 256 million individuals (maximum capacity)
     population.Initialize( census );
+
+    Constants constants;
+    constants.incubation_duration_minimum = configuration.incubation_duration_minimum;
+    constants.incubation_duration_maximum = configuration.incubation_duration_maximum;
+    constants.infection_duration_minimum  = configuration.infection_duration_minimum;
+    constants.infection_duration_maximum  = configuration.infection_duration_maximum;
+    constants.infectivity                 = configuration.infectivity;
+    constants.UpdateDevice();
 
     std::cerr << "Running " << population.size << " agents for " << configuration.sim_duration << " time steps. " << std::endl;
 

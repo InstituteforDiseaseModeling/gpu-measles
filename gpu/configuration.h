@@ -24,13 +24,18 @@ public:
 
     rapidjson::Value& operator []( const std::string& key );
 
+    static float    Base_Infectivity;
     static uint32_t Default_Geography_Initial_Node_Population;
-    static uint32_t Simulation_Duration;
     static uint32_t Default_Geography_Torus_Size;
     static std::vector<std::string> Demographics_Filenames;
+    static uint32_t Incubation_Period_Max;
+    static uint32_t Incubation_Period_Min;
+    static uint32_t Infectious_Period_Max;
+    static uint32_t Infectious_Period_Min;
     static std::string Regional_Migration_Filename;
     static uint32_t Run_Number;
-    static float x_Base_Population;
+    static uint32_t Simulation_Duration;
+    static float    x_Base_Population;
 
 protected:
 

@@ -15,6 +15,11 @@ struct SimConfig {
     std::string prevalence_file_name;
     std::string network_file_name;
     float population_scale;
+    uint32_t incubation_duration_minimum;
+    uint32_t incubation_duration_maximum;
+    uint32_t infection_duration_minimum;
+    uint32_t infection_duration_maximum;
+    float infectivity;
 
     SimConfig();
     void Initialize( int argc, const char* argv[] );
