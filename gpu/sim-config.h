@@ -20,6 +20,7 @@ struct SimConfig {
     uint32_t infection_duration_minimum;
     uint32_t infection_duration_maximum;
     float infectivity;
+    float migration_scale;
 
     SimConfig();
     void Initialize( int argc, const char* argv[] );

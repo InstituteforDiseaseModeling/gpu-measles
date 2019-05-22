@@ -97,7 +97,7 @@ void PopulationImpl::initializePrngStates( uint32_t prng_seed )
     cuda::deviceSynchronize();
 }
 
-void PopulationImpl::Initialize( const Census& census )
+void PopulationImpl::Initialize( const Census& census, bool initial_immunity, float r0, float daily_mortality )
 {
     numLocales = census.population.size();
     size = std::accumulate( census.population.begin(), census.population.end(), 0 );
@@ -109,7 +109,7 @@ void PopulationImpl::Initialize( const Census& census )
     cuda::mallocManaged( &birthsByLocale, numLocales * sizeof(birthsByLocale[0]) );
 
     Statistics stats;
-    instantiateNewIndividuals( 0, size, reinterpret_cast<int32_t*>(populations), stats );
+    instantiateNewIndividuals( 0, size, reinterpret_cast<int32_t*>(populations), stats, initial_immunity, r0, daily_mortality );
     cuda::free( populations );
 }
 
@@ -139,7 +139,7 @@ __global__ void new_individuals( uint32_t count, uint32_t num_locations, int32_t
 
 #define MEAN_AGE    ( 25 * 365)
 
-void PopulationImpl::instantiateNewIndividuals( size_t offset, uint32_t count, int32_t* individuals, Statistics stats )
+void PopulationImpl::instantiateNewIndividuals( size_t offset, uint32_t count, int32_t* individuals, Statistics stats, bool initial_immunity, float r0, float daily_mortality )
 {
     dim3 blocks( THREADS_PER_BLOCK, 1, 1 );
     dim3 grid( (size + blocks.x - 1) / blocks.x, 1, 1 );
@@ -148,7 +148,7 @@ void PopulationImpl::instantiateNewIndividuals( size_t offset, uint32_t count, i
     cuda::deviceSynchronize();
 
     scramblePopulation( offset, count );
-    initializeNewIndividuals( 0, size, MEAN_AGE, false, stats );
+    initializeNewIndividuals( 0, size, MEAN_AGE, initial_immunity, r0, daily_mortality, stats );
 }
 
 void PopulationImpl::scramblePopulation( size_t offset, uint32_t count )
@@ -177,7 +177,7 @@ __device__ float sigmoid( curandState_t* pPrngState )
     return max(duration, 0.0f); // clamp return value to 0
 }
 
-__global__ void initialize_newborns( uint32_t count, Population state, uint16_t mean_age, bool initial_immunity, Statistics stats, curandState_t* pPrngStates )
+__global__ void initialize_newborns( uint32_t count, Population state, uint16_t mean_age, bool initial_immunity, float r0, float daily_mortality, Statistics stats, curandState_t* pPrngStates )
 {
     uint32_t tidx = (blockIdx.x * blockDim.x) + threadIdx.x;
 
@@ -188,37 +188,31 @@ __global__ void initialize_newborns( uint32_t count, Population state, uint16_t 
         state.incubation_duration[ tidx ] = 0;
         state.infectious_duration[ tidx ] = 0;
         uint32_t age = (mean_age > 0) ? uint32_t(-log(curand_uniform(&pPrngStates[tidx])) * mean_age) : 0;
-        state.age_in_days[tidx] = min(age, MAX_AGE);
-        uint32_t location = state.location[ tidx ];
+        state.age_in_days[tidx] = age = min(age, MAX_AGE);
+
+        uint16_t immunity = 0;
         if ( initial_immunity )
         {
             float draw = curand_uniform( pPrngStates + tidx );
-            float susceptible = stats.susceptible[ location ];
-            float recovered   = stats.recovered[ location ];
-            if ( draw < (recovered / (susceptible + recovered)) )
+            float immune_fraction = 1.0f - float(exp( -float(age) * r0 * daily_mortality ));
+            if ( draw < immune_fraction )
             {
-                state.immunity[ tidx ] = uint32_t( sigmoid( pPrngStates + tidx ) );
-            }
-            else
-            {
-                state.immunity[ tidx ] = 0;
+                immunity = UINT16_MAX;
             }
         }
-        else
-        {
-            state.immunity[ tidx ] = 0;
-        }
+        state.immunity[ tidx ] = immunity;
+
         state.infectivity[ tidx ] = 0;
     }
 }
 
-void PopulationImpl::initializeNewIndividuals( size_t offset, uint32_t count, uint16_t mean_age, bool initial_immunity, Statistics stats )
+void PopulationImpl::initializeNewIndividuals( size_t offset, uint32_t count, uint16_t mean_age, bool initial_immunity, float r0, float daily_mortality, Statistics stats )
 {
     dim3 blocks( THREADS_PER_BLOCK, 1, 1 );
     dim3 grid( (count + blocks.x - 1) / blocks.x, 1, 1 );
     Population temp = *this + offset;
     Statistics empty;
-    initialize_newborns<<<grid, blocks>>>( count, temp, mean_age, initial_immunity, empty, pPrngStates );
+    initialize_newborns<<<grid, blocks>>>( count, temp, mean_age, initial_immunity, r0, daily_mortality, empty, pPrngStates );
     cuda::deviceSynchronize();
 }
 
@@ -317,18 +311,10 @@ __global__ void initialize_newborns( uint32_t count, Population state, Statistic
         state.incubation_duration[ tidx ] = 0;
         state.infectious_duration[ tidx ] = 0;
         state.age_in_days[ tidx ]         = 0;
-        uint32_t location = state.location[ tidx ];
-        float draw = curand_uniform( pPrngStates + tidx );
-        float susceptible = stats.susceptible[ location ];
-        float recovered   = stats.recovered[ location ];
-        if ( draw < (recovered / (susceptible + recovered)) )
-        {
-            state.immunity[ tidx ] = uint32_t( sigmoid( pPrngStates + tidx ) );
-        }
-        else
-        {
-            state.immunity[ tidx ] = 0;
-        }
+
+        // kfrey says assume all newborns get some maternal immunity
+        state.immunity[ tidx ] = uint32_t( sigmoid( pPrngStates + tidx ) );
+
         state.infectivity[ tidx ] = 0;
     }
 }

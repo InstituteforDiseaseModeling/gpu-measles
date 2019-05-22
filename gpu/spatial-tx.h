@@ -17,7 +17,7 @@ public:
 class SpatialTx : public Transmission
 {
 public:
-    SpatialTx(uint32_t num_locations, float* connectivity);
+    SpatialTx(uint32_t num_locations, float* connectivity, float factor);
     virtual ~SpatialTx();
 
     virtual void DoTransmission( float* pInput, float* pOutput, uint32_t* pPopulations ) override;
@@ -29,6 +29,7 @@ protected:
     float* pFactors;
     float* pOutflow;
     float* pInflow;
+    float  factor;
 
 private:
 };
@@ -40,4 +41,4 @@ struct DummyTx : public Transmission
     virtual void DoTransmission( float* pInput, float* pOutput, uint32_t* pPopulations ) override {}
 };
 
-Transmission* TransmissionFromFile( const std::string& filename, uint32_t num_locations );
+Transmission* TransmissionFromFile( const std::string& filename, uint32_t num_locations, float factor );

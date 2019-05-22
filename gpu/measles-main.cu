@@ -40,11 +40,6 @@ int main(int argc, const char* argv[])
     SimConfig configuration;
     configuration.Initialize( argc, argv );
 
-    Census census;
-    census.Initialize( configuration );
-    PopulationImpl  population( 1 << 28, configuration.prng_seed ); // 256 million individuals (maximum capacity)
-    population.Initialize( census );
-
     Constants constants;
     constants.incubation_duration_minimum = configuration.incubation_duration_minimum;
     constants.incubation_duration_maximum = configuration.incubation_duration_maximum;
@@ -53,9 +48,15 @@ int main(int argc, const char* argv[])
     constants.infectivity                 = configuration.infectivity;
     constants.UpdateDevice();
 
+    Census census;
+    census.Initialize( configuration );
+    PopulationImpl  population( 1 << 28, configuration.prng_seed ); // 256 million individuals (maximum capacity)
+    float r0 = ((constants.infection_duration_minimum + constants.infection_duration_maximum) / 2.0f) * constants.infectivity;
+    population.Initialize( census, Configuration::Enable_Immunity && Configuration::Enable_Initial_Susceptibility_Distribution, r0, MORTALITY );
+
     std::cerr << "Running " << population.size << " agents for " << configuration.sim_duration << " time steps. " << std::endl;
 
-    Transmission* spatialTransmission = TransmissionFromFile( configuration.network_file_name, census.num_locales );
+    Transmission* spatialTransmission = TransmissionFromFile( configuration.network_file_name, census.num_locales, configuration.migration_scale );
 
     StatisticsImpl statistics( configuration.sim_duration + 1, census.num_locales, census.population, census.prevalence );
     TransmissionLogImpl transmissions( 1 << 28 );

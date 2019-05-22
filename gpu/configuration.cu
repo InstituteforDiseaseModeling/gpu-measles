@@ -6,18 +6,21 @@
 
 #define PARAMETERS  "parameters"
 
-uint32_t Configuration::Default_Geography_Initial_Node_Population = 1000;
-uint32_t Configuration::Simulation_Duration                       =   90;
-uint32_t Configuration::Default_Geography_Torus_Size              =   10;
+uint32_t Configuration::Default_Geography_Initial_Node_Population  = 1000;
+uint32_t Configuration::Simulation_Duration                        =   90;
+uint32_t Configuration::Default_Geography_Torus_Size               =   10;
 std::vector<std::string> Configuration::Demographics_Filenames;
 std::string Configuration::Regional_Migration_Filename;
-uint32_t Configuration::Run_Number                                =    1;
-float    Configuration::x_Base_Population                         =    1.0f;
-uint32_t Configuration::Incubation_Period_Min                     =    2;
-uint32_t Configuration::Incubation_Period_Max                     =    5;
-uint32_t Configuration::Infectious_Period_Min                     =    8;
-uint32_t Configuration::Infectious_Period_Max                     =   12;
-float    Configuration::Base_Infectivity                          =    2.0f;
+uint32_t Configuration::Run_Number                                 =    1;
+float    Configuration::x_Base_Population                          =    1.0f;
+uint32_t Configuration::Incubation_Period_Min                      =    2;
+uint32_t Configuration::Incubation_Period_Max                      =    5;
+uint32_t Configuration::Infectious_Period_Min                      =    8;
+uint32_t Configuration::Infectious_Period_Max                      =   12;
+float    Configuration::Base_Infectivity                           =    2.0f;
+bool     Configuration::Enable_Immunity                            = true;
+bool     Configuration::Enable_Initial_Susceptibility_Distribution = true;
+float    Configuration::x_Regional_Migration                       =    1.0f;
 
 Configuration::Configuration()
     : document()
@@ -29,6 +32,12 @@ Configuration::~Configuration()
 {
 
 }
+
+#define GetIntParamAsBool( var, _default ) \
+    if ( parameters.HasMember( #var ) ) \
+        var = bool(parameters[ #var ].GetInt() != 0); \
+    else \
+        var = _default;
 
 #define GetUintParam( var, _default ) \
     if ( parameters.HasMember( #var ) ) \
@@ -88,6 +97,9 @@ void Configuration::FromString( const std::string& input )
         GetUintParam( Infectious_Period_Min,  8 );
         GetUintParam( Infectious_Period_Max, 12 );
         GetFloatParam( Base_Infectivity, 2.0f );
+        GetIntParamAsBool( Enable_Immunity, true );
+        GetIntParamAsBool( Enable_Initial_Susceptibility_Distribution, true );
+        GetFloatParam( x_Regional_Migration, 1.0f );
     }
 }
 

@@ -26,7 +26,8 @@ __global__ void calculate_contagion(
     uint32_t* pPopulationForLocation,
     uint32_t* pTotalPopulation,
     float* pOutflows,
-    float* pInflows )
+    float* pInflows,
+    float  factor )
 {
     uint32_t tidxx = threadIdx.x + (blockIdx.x * blockDim.x);   // destination node
     uint32_t tidxy = threadIdx.y + (blockIdx.y * blockDim.y);   // source node
@@ -36,7 +37,7 @@ __global__ void calculate_contagion(
         float* pFactor        = pFactorIJ              + (tidxy * count) + tidxx;
         float* pInfection     = pInfectionForLocation                    + tidxy;
         uint32_t* pPopulation = pPopulationForLocation                   + tidxy;
-        float delta = (*pInfection) * (*pPopulation) * (*pFactor) / (*pTotalPopulation);
+        float delta = factor * (*pInfection) * (*pPopulation) * (*pFactor) / (*pTotalPopulation);
         // printf("tidx (%d,%d) c=%f p=%d f=%f n=%d d=%f\n", tidxx, tidxy, *pInfection, *pPopulation, *pFactor, *pTotalPopulation, delta);
         float* pOutflow = pOutflows + tidxy;    // from Y
         float* pInflow  = pInflows  + tidxx;    // to X

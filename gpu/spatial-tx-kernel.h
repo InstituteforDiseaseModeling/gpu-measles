@@ -12,5 +12,6 @@ __global__ void calculate_contagion(
     uint32_t* pPopulationForLocation,
     uint32_t* pTotalPopulation,
     float* pOutflows,
-    float* pInflows );
+    float* pInflows,
+    float  factor );
 __global__ void update_contagion( uint32_t count, float* pInflow, float* pOutflow, float*pOutput );

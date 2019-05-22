@@ -43,7 +43,7 @@ struct PopulationImpl : public Population
     PopulationImpl( uint32_t capacity, uint32_t prng_seed );
     ~PopulationImpl();
 
-    void Initialize( const Census& census );
+    void Initialize( const Census& census, bool initial_immunity, float r0, float daily_mortality );
     void Update( uint32_t timeStep, Statistics current, Statistics next, TransmissionLog transmissions );
     void VitalDynamics( float birth_rate, float mortality, float dt, Statistics current, Statistics next );
 
@@ -52,7 +52,7 @@ protected:
     int32_t*    birthsByLocale;
 
     void initializePrngStates( uint32_t prng_seed );
-    void instantiateNewIndividuals( size_t offset, uint32_t count, int32_t* new_individuals, Statistics stats );
+    void instantiateNewIndividuals( size_t offset, uint32_t count, int32_t* new_individuals, Statistics stats, bool initial_immunity, float r0, float daily_mortality );
     void scramblePopulation( size_t offset, uint32_t count );
-    void initializeNewIndividuals( size_t offset, uint32_t count, uint16_t mean_age, bool initial_immunity, Statistics stats );
+    void initializeNewIndividuals( size_t offset, uint32_t count, uint16_t mean_age, bool initial_immunity, float r0, float daily_mortality, Statistics stats );
 };

@@ -76,6 +76,8 @@ void SimConfig::Initialize( int argc, const char* argv[] )
         infection_duration_minimum  = Configuration::Infectious_Period_Min;
         infection_duration_maximum  = Configuration::Infectious_Period_Max;
         infectivity = Configuration::Base_Infectivity;
+
+        migration_scale = Configuration::x_Regional_Migration;
     }
 
     debug = bool( args.count("debug") );

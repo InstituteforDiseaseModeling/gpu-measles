@@ -28,6 +28,8 @@ public:
     static uint32_t Default_Geography_Initial_Node_Population;
     static uint32_t Default_Geography_Torus_Size;
     static std::vector<std::string> Demographics_Filenames;
+    static bool     Enable_Immunity;
+    static bool     Enable_Initial_Susceptibility_Distribution;
     static uint32_t Incubation_Period_Max;
     static uint32_t Incubation_Period_Min;
     static uint32_t Infectious_Period_Max;
@@ -36,6 +38,7 @@ public:
     static uint32_t Run_Number;
     static uint32_t Simulation_Duration;
     static float    x_Base_Population;
+    static float    x_Regional_Migration;
 
 protected:
 

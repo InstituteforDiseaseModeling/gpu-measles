@@ -20,7 +20,7 @@
 void loadCsvConnectivityFile( const std::string& filename, uint32_t num_locations, std::vector<float>& connectivity );
 void loadBinaryConnectivityFile( const std::string& filename, uint32_t num_locations, std::vector<float>& connectivity );
 
-Transmission* TransmissionFromFile( const std::string& filename, uint32_t num_locations )
+Transmission* TransmissionFromFile( const std::string& filename, uint32_t num_locations, float factor )
 {
     Transmission* tx = nullptr;
 
@@ -43,7 +43,7 @@ Transmission* TransmissionFromFile( const std::string& filename, uint32_t num_lo
                 break;
         }
 
-        tx = new SpatialTx( num_locations, connectivity.data() );
+        tx = new SpatialTx( num_locations, connectivity.data(), factor );
     }
     else
     {
@@ -53,12 +53,13 @@ Transmission* TransmissionFromFile( const std::string& filename, uint32_t num_lo
     return tx;
 }
 
-SpatialTx::SpatialTx( uint32_t num_locations, float* connectivity )
+SpatialTx::SpatialTx( uint32_t num_locations, float* connectivity, float factor )
     : count( num_locations )
     , pTotal( nullptr )
     , pFactors( nullptr )
     , pOutflow( nullptr )
     , pInflow( nullptr )
+    , factor( factor )
 {
     // TODO - would performance increase if factor and contagion matrix stride
     // was a factor of 32?
@@ -131,7 +132,8 @@ void SpatialTx::DoTransmission( float* pInput, float* pOutput, uint32_t* pPopula
         pPopulations,
         pTotal,
         pOutflow,
-        pInflow
+        pInflow,
+        factor
     );
 
     cuda::deviceSynchronize();
