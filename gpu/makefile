@@ -30,13 +30,13 @@ CXX_FLAGS=-I/usr/local/include -I../shared -lineinfo -rdc=true -std=c++11 --maxr
 
 all: measles debug
 
-measles: *.cu
+measles: *.cu *.cpp ../shared/*.cpp
 	nvcc \
 		$(GENCODE_FLAGS) \
 		$(CXX_FLAGS) \
 		-o bin/$@ $^
 
-debug: *.cu
+debug: *.cu *.cpp ../shared/*.cpp
 	nvcc \
 		$(GENCODE_FLAGS) \
 		$(CXX_FLAGS) \
