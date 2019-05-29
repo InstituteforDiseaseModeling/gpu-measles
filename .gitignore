@@ -7,7 +7,12 @@
 
 *.nvvp
 
+gpu/output.csv
+gpu/transmission.bin
+
+tmp/*
 */bin/*
+*/build/*
 */tmp/*
 */__pycache__/*
 */ipch/*
