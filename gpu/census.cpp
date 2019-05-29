@@ -29,33 +29,35 @@ Census::Census()
 
 void validatePrevalence( const std::vector<float>& prevalence, uint32_t num_locales );
 
-void Census::Initialize( const SimConfig& configuration )
+void Census::Initialize( const ConfigParameters& parameters )
 {
-    float scale = configuration.population_scale;
+    float scale = parameters.x_Base_Population;
 
-    if ( configuration.population_file_name.size() > 0 )
+    const std::string& population_file_name = parameters.demographics_Filenames[0];
+
+    if ( population_file_name.size() > 0 )
     {
-        if ( configuration.network_file_name.size() == 0 )
+        if ( parameters.regional_Migration_Filename.size() == 0 )
         {
-            std::cerr << "Missing network specification file ('Regional_Migration_Filename' in configuration)." << std::endl;
+            std::cerr << "Missing network specification file ('Regional_Migration_Filename' in parameters)." << std::endl;
             exit( -1 );
         }
 
-        auto fileType = util::DetermineFileType( configuration.population_file_name );
+        auto fileType = util::DetermineFileType( population_file_name );
         switch ( fileType )
         {
 //        case util::typeCsv:
-//            loadCsvPopulationFile( configuration.population_file_name, census );
+//            loadCsvPopulationFile( population_file_name, census );
 //            break;
     
         case util::typeJson:
-            populationFromJsonFile( configuration.population_file_name );
-            prevalenceFromJsonFile( configuration.population_file_name );
+            populationFromJsonFile( population_file_name );
+            prevalenceFromJsonFile( population_file_name );
             break;
     
         default:
-//            loadBinaryPopulationFile( configuration.population_file_name, census );
-            std::cerr << "Unsupported file type for '" << configuration.population_file_name.c_str() << "'." << std::endl;
+//            loadBinaryPopulationFile( population_file_name, census );
+            std::cerr << "Unsupported file type for '" << population_file_name.c_str() << "'." << std::endl;
             exit( -1 );
 //            break;
         }

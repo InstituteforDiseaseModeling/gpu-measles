@@ -124,16 +124,16 @@ clean:
 clobber:
 	rm -fr $(BUILDDIR) $(TARGETDIR)
 
-$(BUILDDIR)/%.cu.o: $(SRCDIR)/%.cu
+$(BUILDDIR)/%.cu.o: $(SRCDIR)/%.cu $(SRCDIR)/%.h
 	@mkdir -p $(BUILDDIR);
 	$(NVCC) $(INCLUDES) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -o $@ -c $<
 
-$(BUILDDIR)/%.o: $(SRCDIR)/%.cpp
+$(BUILDDIR)/%.o: $(SRCDIR)/%.cpp $(SRCDIR)/%.h
 	@mkdir -p $(BUILDDIR);
 	$(NVCC) $(INCLUDES) $(ALL_CCFLAGS) -o $@ -c $<
 #$(NVCC) $(INCLUDES) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -o $@ -c $<
 
-$(SHARED_BUILDDIR)/%.o : $(SHARED_SRCDIR)/%.cpp
+$(SHARED_BUILDDIR)/%.o : $(SHARED_SRCDIR)/%.cpp $(SHARED_SRCDIR)/%.h
 	@mkdir -p $(SHARED_BUILDDIR)
 	$(NVCC) $(INCLUDES) $(ALL_CCFLAGS) -o $@ -c $<
 #$(NVCC) $(INCLUDES) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -o $@ -c $<

@@ -14,7 +14,8 @@
 #include "cub/cub/cub.cuh"
 
 #include "block-size.h"
-#include "configuration.h"
+#include "cmdline.h"
+#include "config-json.h"
 #include "constants.h"
 #include "demographics.h"
 #include "distributions.h"
@@ -37,34 +38,35 @@ bool debug = false;
 
 int main(int argc, const char* argv[])
 {
-    SimConfig configuration;
-    configuration.Initialize( argc, argv );
+    CmdLine cmdLine( argc, argv );
+    ConfigJson configJson( cmdLine.config_filename );
+    const ConfigParameters& parameters = configJson.parameters;
 
     Constants constants;
-    constants.incubation_duration_minimum = configuration.incubation_duration_minimum;
-    constants.incubation_duration_maximum = configuration.incubation_duration_maximum;
-    constants.infection_duration_minimum  = configuration.infection_duration_minimum;
-    constants.infection_duration_maximum  = configuration.infection_duration_maximum;
-    constants.infectivity                 = configuration.infectivity;
+    constants.incubation_duration_minimum = parameters.incubation_Period_Min;
+    constants.incubation_duration_maximum = parameters.incubation_Period_Max;
+    constants.infection_duration_minimum  = parameters.infectious_Period_Min;
+    constants.infection_duration_maximum  = parameters.infectious_Period_Max;
+    constants.infectivity                 = parameters.base_Infectivity;
     constants.UpdateDevice();
 
     Census census;
-    census.Initialize( configuration );
-    PopulationImpl  population( 1 << 28, configuration.prng_seed ); // 256 million individuals (maximum capacity)
+    census.Initialize( parameters );
+    PopulationImpl  population( 1 << 28, parameters.run_Number ); // 256 million individuals (maximum capacity)
     float r0 = ((constants.infection_duration_minimum + constants.infection_duration_maximum) / 2.0f) * constants.infectivity;
-    population.Initialize( census, Configuration::Enable_Immunity && Configuration::Enable_Initial_Susceptibility_Distribution, r0, MORTALITY );
+    population.Initialize( census, parameters.enable_Immunity && parameters.enable_Initial_Susceptibility_Distribution, r0, MORTALITY );
 
-    std::cerr << "Running " << population.size << " agents for " << configuration.sim_duration << " time steps. " << std::endl;
+    std::cerr << "Running " << population.size << " agents for " << parameters.simulation_Duration << " time steps. " << std::endl;
 
-    Transmission* spatialTransmission = TransmissionFromFile( configuration.network_file_name, census.num_locales, configuration.migration_scale );
+    Transmission* spatialTransmission = TransmissionFromFile( parameters.regional_Migration_Filename, census.num_locales, parameters.x_Regional_Migration );
 
-    StatisticsImpl statistics( configuration.sim_duration + 1, census.num_locales, census.population, census.prevalence );
+    StatisticsImpl statistics( parameters.simulation_Duration + 1, census.num_locales, census.population, census.prevalence );
     TransmissionLogImpl transmissions( 1 << 28 );
 
     Importation* importation = new ContagionIncrease( 30, std::vector<uint16_t>({ 313, 655, 635, 24, 182, 445 }), 20.0f );
 
     auto start = clock();
-    for ( size_t step = 0; step < configuration.sim_duration; ++step )
+    for ( size_t step = 0; step < parameters.simulation_Duration; ++step )
     {
         Statistics current = statistics + step;
         Statistics next    = current + 1;

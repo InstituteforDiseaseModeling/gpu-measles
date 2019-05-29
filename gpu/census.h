@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-#include "sim-config.h"
+#include "config-json.h"
 
 struct Census
 {
@@ -17,7 +17,7 @@ struct Census
     std::vector<float> prevalence;
 
     Census();
-    void Initialize( const SimConfig& configuration );
+    void Initialize( const ConfigParameters& parameters );
 
 protected:
 
