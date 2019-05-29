@@ -27,17 +27,6 @@ void SimConfig::Initialize( int argc, const char* argv[] )
     cxxopts::Options options(argv[0], "Agent based SEIR model on the GPU with CUDA.");
     options.add_options()
         ("C,config",     "Configuration file   ", cxxopts::value<std::string>()->default_value(""))
-//getFromCfg        ("s,steps",      "Number of time steps ", cxxopts::value<int>()->default_value("90"))
-//getFromCfg        ("l,locations",  "Number of geographies", cxxopts::value<int>()->default_value("1"))
-//getFromCfg        ("p,prev",       "Initial prevalence   ", cxxopts::value<float>()->default_value("0.01"))
-//getFromCfg        ("population",   "Population file      ", cxxopts::value<std::string>()->default_value(""))
-//getFromCfg        ("prevalence",   "Prevalence file      ", cxxopts::value<std::string>()->default_value(""))
-//getFromCfg        ("spatial",      "Connectivity file    ", cxxopts::value<std::string>()->default_value(""))
-//vax        ("n,node",       "Vaccination node     ", cxxopts::value<int>()->default_value("0"))
-//vax        ("t,time",       "SIA time             ", cxxopts::value<int>()->default_value("-1"))
-//vax        ("e,efficacy",   "Vaccine efficacy     ", cxxopts::value<int>()->default_value("730"))
-//vax        ("minimum",      "Minimum age          ", cxxopts::value<int>()->default_value("0"))
-//vax        ("maximum",      "Maximum age          ", cxxopts::value<int>()->default_value("42000"))
         ("d,debug",      "Turn on debug output")
         ("h,help",       "Show help.");
 
