@@ -4,6 +4,7 @@
             "name": "Win32",
             "includePath": [
                 "${workspaceFolder}/**",
+                "${workspaceFolder}/shared",
                 "c:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v10.0/include"
             ],
             "defines": [
