@@ -1,0 +1,19 @@
+# CUDA installation on Azure NC6 VM with K80 GPU
+    
+    1  wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/cuda-ubuntu1804.pin
+    2  sudo mv cuda-ubuntu1804.pin /etc/apt/preferences.d/cuda-repository-pin-600
+    3  wget http://developer.download.nvidia.com/compute/cuda/10.1/Prod/local_installers/cuda-repo-ubuntu1804-10-1-local-10.1.243-418.87.00_1.0-1_amd64.deb
+    4  sudo dpkg -i cuda-repo-ubuntu1804-10-1-local-10.1.243-418.87.00_1.0-1_amd64.deb
+    5  sudo apt-key add /var/cuda-repo-10-1-local-10.1.243-418.87.00/7fa2af80.pub
+    6  sudo apt-get update
+    7  sudo apt-get -y install cuda
+   10  git clone https://github.com/institutefordiseasemodeling/gpu-measles measles
+   25  sudo apt-get install linux-headers-$(uname -r)
+   48  export PATH=/usr/local/cuda-10.1/bin:$PATH
+   63  wget https://github.com/NVlabs/cub/archive/v1.8.0.tar.gz
+   65  mv v1.8.0.tar.gz cub-v1.8.0.tar.gz
+   66  tar xvf cub-v1.8.0.tar.gz 
+   82  sudo cp -r cub-v1.8.0/cub /usr/local/include/cub
+       cd ~/measles/gpu
+   87  make
+

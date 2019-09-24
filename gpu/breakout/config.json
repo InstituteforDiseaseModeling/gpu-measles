@@ -1,0 +1,23 @@
+{
+    "metadata": {
+        "author": "clorton",
+	"tool": "vi",
+	"date": "2019-09-24 12:45:00"
+    },
+    "parameters": {
+        "Simulation_Duration": 180,
+	"Demographics_Filenames": ["demographics.json"],
+	"Regional_Migration_Filename": "none.csv",
+	"Run_Number": 42,
+	"x_Base_Population": 1.0,
+	"Incubation_Period_Min": 8,
+	"Incubation_Period_Max": 12,
+	"Infectious_Period_Min": 12,
+	"Infectious_Period_Max": 16,
+	"Base_Infectivity": 1.143,
+	"Enable_Immunity": 0,
+	"Enable_Initial_Susceptibility_Distribution": 0,
+	"x_Regional_Migration": 1.0
+    }
+}
+

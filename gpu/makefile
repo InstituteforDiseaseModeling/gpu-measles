@@ -98,7 +98,7 @@ endif
 # Gencode arguments
 # SMS ?= 30 35 37 50 52 60 61 70
 # SMS ?= 60 61 70
-SMS ?= 60
+SMS ?= 37
 # Generate SASS code for each SM architecture listed in $(SMS)
 $(foreach sm,$(SMS),$(eval GENCODE_FLAGS += -gencode arch=compute_$(sm),code=sm_$(sm)))
 
