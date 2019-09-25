@@ -31,7 +31,8 @@ ContagionIncrease::ContagionIncrease( uint16_t period, std::vector<uint16_t> loc
 
 bool ContagionIncrease::IsApplicable( uint16_t time_step, Population& population, Statistics& statistics )
 {
-    bool isApplicable = ((time_step >= period) && ((time_step % period) == 0));
+    // bool isApplicable = ((time_step >= period) && ((time_step % period) == 0));
+    bool isApplicable = ((time_step % period) == 0);
     return isApplicable;
 }
 

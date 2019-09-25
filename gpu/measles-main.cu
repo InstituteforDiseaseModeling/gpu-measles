@@ -11,7 +11,6 @@
 
 #include "cuda.h"
 #include <curand_kernel.h>
-#include "cub/cub/cub.cuh"
 
 #include "block-size.h"
 #include "cmdline.h"
@@ -63,7 +62,8 @@ int main(int argc, const char* argv[])
     StatisticsImpl statistics( parameters.simulation_Duration + 1, census.num_locales, census.population, census.prevalence );
     TransmissionLogImpl transmissions( 1 << 28 );
 
-    Importation* importation = new ContagionIncrease( 30, std::vector<uint16_t>({ 313, 655, 635, 24, 182, 445 }), 20.0f );
+    // Importation* importation = new ContagionIncrease( 30, std::vector<uint16_t>({ 313, 655, 635, 24, 182, 445 }), 20.0f );
+    Importation* importation = new ContagionIncrease( 365, std::vector<uint16_t>({ 0 }), 200.0f );
 
     auto start = clock();
     for ( size_t step = 0; step < parameters.simulation_Duration; ++step )

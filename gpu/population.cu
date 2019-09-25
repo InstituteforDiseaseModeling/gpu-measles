@@ -15,7 +15,8 @@
 #include "population.h"
 #include "utilities.h"
 
-#include "cub/cub/cub.cuh"
+//#include "cub/cub/cub.cuh"
+#include "cub/cub/device/device_radix_sort.cuh"
 
 Population Population::operator +(size_t offset)
 {

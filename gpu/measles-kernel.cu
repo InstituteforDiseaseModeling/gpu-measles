@@ -4,7 +4,6 @@
 
 #include "constants.h"
 #include "measles-kernel.h"
-#include "cub/cub/cub.cuh"
 #include "block-size.h"
 
 __constant__ Constants parameters;

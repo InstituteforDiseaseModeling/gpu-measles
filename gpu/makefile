@@ -18,6 +18,9 @@
 #   # Compile                                                                  #
 #   $ make                                                                     #
 #                                                                              #
+#   # Compile debug                                                            #
+#   $ make dbg=1                                                               #
+#                                                                              #
 #   # Run                                                                      #
 #   $ make run                                                                 #
 #                                                                              #

@@ -1,5 +1,6 @@
 #include "spatial-tx-kernel.h"
-#include "cub/cub/cub.cuh"
+//#include "cub/cub/cub.cuh"
+#include "cub/cub/block/block_reduce.cuh"
 
 __global__ void total_population( uint32_t count, uint32_t* pPopulations, uint32_t* pTotal )
 {
