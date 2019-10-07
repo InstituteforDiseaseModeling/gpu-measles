@@ -35,6 +35,8 @@ bool debug = false;
 #define BIRTHRATE   (0.0001096f)
 #define MORTALITY   (0.0000414f)
 
+#define MAX_POPULATION	(1 << 20)
+
 int main(int argc, const char* argv[])
 {
     CmdLine cmdLine( argc, argv );
@@ -51,7 +53,7 @@ int main(int argc, const char* argv[])
 
     Census census;
     census.Initialize( parameters );
-    PopulationImpl  population( 1 << 28, parameters.run_Number ); // 256 million individuals (maximum capacity)
+    PopulationImpl  population( MAX_POPULATION, parameters.run_Number ); // 256 million individuals (maximum capacity)
     float r0 = ((constants.infection_duration_minimum + constants.infection_duration_maximum) / 2.0f) * constants.infectivity;
     population.Initialize( census, parameters.enable_Immunity && parameters.enable_Initial_Susceptibility_Distribution, r0, MORTALITY );
 
@@ -60,7 +62,7 @@ int main(int argc, const char* argv[])
     Transmission* spatialTransmission = TransmissionFromFile( parameters.regional_Migration_Filename, census.num_locales, parameters.x_Regional_Migration );
 
     StatisticsImpl statistics( parameters.simulation_Duration + 1, census.num_locales, census.population, census.prevalence );
-    TransmissionLogImpl transmissions( 1 << 28 );
+    TransmissionLogImpl transmissions( MAX_POPULATION );
 
     // Importation* importation = new ContagionIncrease( 30, std::vector<uint16_t>({ 313, 655, 635, 24, 182, 445 }), 20.0f );
     Importation* importation = new ContagionIncrease( 365, std::vector<uint16_t>({ 0 }), 200.0f );
