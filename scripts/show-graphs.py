@@ -18,12 +18,12 @@ import sys
     *from demographics
 '''
 
-def main(filename, log=False):
+def main(filename, node, log=False):
 
     print("Loading file '{0}'...".format(filename), end='', flush=True)
     df = pandas.read_csv(filename)
     print('finished.', flush=True)
-    data = list(zip(df['S314'], df['E314'], df['I314'], df['R314'], df['P314']))
+    data = list(zip(df[f'S{node}'], df[f'E{node}'], df[f'I{node}'], df[f'R{node}'], df[f'P{node}']))
     if log:
         plt.yscale('log')
     plt.plot(data)
@@ -36,9 +36,10 @@ if __name__ == '__main__':
 
     parser = ArgumentParser()
     parser.add_argument('filename')
+    parser.add_argument('-n', '--node', type=int, default=314)
     parser.add_argument('-l', '--log', default=False, action='store_true')
 
     args = parser.parse_args()
 
-    main(args.filename, args.log)
+    main(args.filename, args.node, args.log)
     sys.exit(0)
