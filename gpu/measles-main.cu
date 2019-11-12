@@ -11,8 +11,6 @@
 
 #include "cuda.h"
 #include <curand_kernel.h>
-#include "cub/cub/cub.cuh"
-
 #include "block-size.h"
 #include "cmdline.h"
 #include "config-json.h"
