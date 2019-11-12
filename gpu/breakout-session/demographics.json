@@ -1,0 +1,31 @@
+{
+    "Metadata":{
+      "DateCreated":"THU SEP 19 11:58:00 2019",
+      "Tool":"vi",
+      "Author":"clorton",
+      "IdReference":"Legacy",
+      "NodeCount":1
+    },
+    "Defaults":{
+      "NodeAttributes":{
+        "InitialPopulation":10000,
+        "BirthRate":3.484673133016816e-05
+      },
+      "IndividualAttributes":{
+        "PrevalenceDistributionFlag":0,
+        "PrevalenceDistribution1":0.0
+      }
+  },
+    "Nodes":[
+      {
+        "Name":"SANDBOX",
+        "NodeID":1,
+        "NodeAttributes":{
+          "InitialPopulation":100000,
+          "Latitude":6.806498,
+          "Longitude":8.000171
+        }
+      }
+    ]
+  }
+  
